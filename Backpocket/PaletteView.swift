@@ -1,0 +1,103 @@
+import SwiftUI
+
+struct PaletteView: View {
+    @ObservedObject var model: PaletteModel
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            if model.growsUp {
+                rowPills
+                inputPill
+            } else {
+                inputPill
+                rowPills
+            }
+        }
+        .padding(10)
+        .frame(
+            maxWidth: .infinity, maxHeight: .infinity,
+            alignment: model.growsUp ? .bottomLeading : .topLeading
+        )
+        .animation(.smooth(duration: 0.18), value: model.results)
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { focused = true }
+        }
+    }
+
+    @ViewBuilder
+    private var rowPills: some View {
+        let rows = Array(model.results.enumerated())
+        ForEach(model.growsUp ? rows.reversed() : rows, id: \.element.id) { index, result in
+            RowPill(result: result, isSelected: index == model.selection)
+                .onTapGesture { model.onCommit?(result.fact) }
+                .geometryGroup()
+                .transition(.blurReplace)
+        }
+    }
+
+    private var inputPill: some View {
+        HStack(spacing: 6) {
+            TextField("Search", text: $model.query)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12, weight: .medium))
+                .focused($focused)
+                .onSubmit { model.commit() }
+                .onKeyPress(.upArrow) { model.adjustSelection(by: model.growsUp ? 1 : -1); return .handled }
+                .onKeyPress(.downArrow) { model.adjustSelection(by: model.growsUp ? -1 : 1); return .handled }
+                .onKeyPress(.escape) { model.onDismiss?(); return .handled }
+                .onKeyPress(.tab) { model.commit(); return .handled }
+
+            if model.results.isEmpty && !model.query.isEmpty {
+                Text("insert ↩")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .transition(.blurReplace)
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(width: 230, height: 29)
+        .glassEffect(.regular, in: .capsule)
+        .animation(.smooth(duration: 0.15), value: model.results.isEmpty && !model.query.isEmpty)
+    }
+}
+
+private struct RowPill: View {
+    let result: FuzzyResult
+    let isSelected: Bool
+    @State private var hovering = false
+
+    private var glass: Glass {
+        if isSelected { return .regular.tint(.accentColor.opacity(0.45)) }
+        if hovering { return .regular.tint(.primary.opacity(0.12)) }
+        return .regular
+    }
+
+    var body: some View {
+        Text(highlightedName)
+            .lineLimit(1)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 5)
+            .frame(maxWidth: 230, alignment: .leading)
+            .fixedSize(horizontal: true, vertical: false)
+            .glassEffect(glass, in: .capsule)
+            .contentShape(.capsule)
+            .onHover { hovering = $0 }
+    }
+
+    private var highlightedName: AttributedString {
+        var text = AttributedString()
+        for (index, character) in result.fact.name.enumerated() {
+            var piece = AttributedString(String(character))
+            if result.matchedIndices.contains(index) {
+                piece.font = .system(size: 11.5, weight: .bold)
+                piece.foregroundColor = .primary
+            } else {
+                piece.font = .system(size: 11.5)
+                piece.foregroundColor = .secondary
+            }
+            text += piece
+        }
+        return text
+    }
+}
