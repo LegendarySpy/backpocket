@@ -355,112 +355,201 @@ private struct AboutTab: View {
         PolarLicenseClient().checkoutURL
     }
 
+    private var portalURL: URL? {
+        PolarLicenseClient().portalURL
+    }
+
     var body: some View {
-        VStack(spacing: 0) {
-            header
+        VStack(alignment: .leading, spacing: 20) {
+            hero
+            licenseCard
+            Spacer(minLength: 0)
+            footer
+        }
+        .padding(24)
+        .frame(width: 440, height: 360)
+    }
 
-            Form {
-                Section("License") {
-                    LabeledContent("Status") {
-                        HStack(spacing: 6) {
-                            Circle()
-                                .fill(statusColor)
-                                .frame(width: 8, height: 8)
-                            Text(license.state.summary)
-                                .foregroundStyle(.secondary)
-                        }
+    // MARK: Hero
+
+    private var hero: some View {
+        HStack(spacing: 16) {
+            Image(systemName: "rectangle.stack.fill")
+                .font(.system(size: 25, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 58, height: 58)
+                .background(
+                    LinearGradient(colors: [.indigo, .blue], startPoint: .topLeading, endPoint: .bottomTrailing),
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                )
+                .shadow(color: .blue.opacity(0.25), radius: 7, y: 3)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Backpocket")
+                    .font(.system(size: 21, weight: .semibold))
+                Text("Your facts, one double-tap away.")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(.secondary)
+                Text("Version \(version)")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .padding(.top, 2)
+            }
+
+            Spacer(minLength: 0)
+        }
+    }
+
+    // MARK: License card
+
+    private var licenseCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 11) {
+                    Image(systemName: license.state.isLicensed ? "checkmark.seal.fill" : "seal")
+                        .font(.system(size: 17))
+                        .foregroundStyle(license.state.isLicensed ? Color.green : Color.secondary)
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(license.state.isLicensed ? "Licensed" : "Free plan")
+                            .font(.system(size: 13.5, weight: .semibold))
+                        Text(planSubtitle)
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(.secondary)
                     }
 
-                    if let snapshot = license.currentSnapshot {
-                        LabeledContent("Key", value: snapshot.displayKey)
-                        if let email = snapshot.customerEmail {
-                            LabeledContent("Account", value: email)
-                        }
-                        if let expiresAt = snapshot.expiresAt {
-                            LabeledContent("Expires", value: expiresAt.formatted(date: .abbreviated, time: .omitted))
-                        }
-                    } else {
-                        HStack(spacing: 8) {
-                            SecureField("License key", text: $key)
-                                .textContentType(.oneTimeCode)
-                                .disabled(license.isWorking)
-                                .onSubmit { activate() }
-                            Button("Activate") { activate() }
-                                .disabled(license.isWorking || key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        }
-                    }
+                    Spacer(minLength: 0)
 
-                    HStack(spacing: 14) {
-                        if license.currentSnapshot == nil, let checkoutURL {
-                            Button("Buy a license") {
-                                NSWorkspace.shared.open(checkoutURL)
-                            }
-                        }
-                        Spacer()
-                        Button("Refresh") { license.refresh() }
-                            .disabled(license.isWorking)
-                        if license.currentSnapshot != nil {
-                            Button("Remove") { license.deactivate() }
-                                .disabled(license.isWorking)
-                        }
+                    if license.isWorking {
+                        ProgressView().controlSize(.small)
+                    }
+                }
+
+                if let snapshot = license.currentSnapshot {
+                    Divider()
+                    licenseDetails(snapshot)
+                } else {
+                    activationField
+                }
+            }
+            .padding(16)
+            .background(.quinary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(.separator.opacity(0.6), lineWidth: 1)
+            )
+
+            if license.currentSnapshot != nil {
+                licenseActions
+            }
+        }
+    }
+
+    private var planSubtitle: String {
+        if license.state.isLicensed {
+            return "Unlimited facts, unlocked."
+        }
+        switch license.state {
+        case .validating:
+            return "Checking your license…"
+        case .inactive(let reason):
+            return reason
+        default:
+            return "Up to \(LicenseManager.freeFactLimit) facts."
+        }
+    }
+
+    private func licenseDetails(_ snapshot: LicenseSnapshot) -> some View {
+        VStack(spacing: 9) {
+            detailRow("Key", snapshot.displayKey, monospaced: true)
+            if let email = snapshot.customerEmail {
+                detailRow("Account", email)
+            }
+            if let expiresAt = snapshot.expiresAt {
+                detailRow("Renews", expiresAt.formatted(date: .abbreviated, time: .omitted))
+            }
+        }
+    }
+
+    private var licenseActions: some View {
+        HStack(spacing: 16) {
+            if let portalURL {
+                Button("Portal") {
+                    NSWorkspace.shared.open(portalURL)
+                }
+                .disabled(license.isWorking)
+            }
+
+            Spacer(minLength: 0)
+
+            Button("Refresh") { license.refresh() }
+                .disabled(license.isWorking)
+            Button("Remove") { license.deactivate() }
+                .disabled(license.isWorking)
+        }
+        .buttonStyle(.link)
+        .controlSize(.small)
+        .padding(.horizontal, 4)
+    }
+
+    private func detailRow(_ label: String, _ value: String, monospaced: Bool = false) -> some View {
+        HStack {
+            Text(label)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 12)
+            Text(value)
+                .font(.system(size: 12, design: monospaced ? .monospaced : .default))
+                .textSelection(.enabled)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+    }
+
+    private var activationField: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                SecureField("Enter license key", text: $key)
+                    .textFieldStyle(.roundedBorder)
+                    .textContentType(.oneTimeCode)
+                    .disabled(license.isWorking)
+                    .onSubmit { activate() }
+                Button("Activate") { activate() }
+                    .disabled(license.isWorking || key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+
+            if let checkoutURL {
+                HStack(spacing: 5) {
+                    Text("Don't have a key?")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(.secondary)
+                    Button("Get a license") {
+                        NSWorkspace.shared.open(checkoutURL)
                     }
                     .buttonStyle(.link)
                     .controlSize(.small)
                 }
             }
-            .formStyle(.grouped)
         }
-        .frame(width: 440, height: 360)
     }
 
-    private var header: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "rectangle.stack.fill")
-                .font(.system(size: 26, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 60, height: 60)
-                .background(
-                    LinearGradient(colors: [.indigo, .blue], startPoint: .top, endPoint: .bottom),
-                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-                )
+    // MARK: Footer
 
-            VStack(spacing: 3) {
-                Text("Backpocket")
-                    .font(.system(size: 17, weight: .semibold))
-                Text("Version \(version)")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                Text("Your facts, one double-tap away.")
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(.tertiary)
-                    .padding(.top, 1)
-            }
-
+    private var footer: some View {
+        HStack {
+            Spacer(minLength: 0)
             Button("Check for Updates…") {
                 AppDelegate.shared?.checkForUpdates()
             }
             .buttonStyle(.link)
             .font(.system(size: 12))
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 28)
-        .padding(.bottom, 18)
     }
 
     private func activate() {
         guard !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         license.activate(key: key)
         key = ""
-    }
-
-    private var statusColor: Color {
-        switch license.state {
-        case .active:
-            .green
-        case .validating:
-            .orange
-        default:
-            .secondary
-        }
     }
 }

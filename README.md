@@ -67,6 +67,7 @@ paid release:
 - `BACKPOCKET_POLAR_ORGANIZATION_ID`: Polar organization UUID
 - `BACKPOCKET_POLAR_LICENSE_BENEFIT_ID`: Backpocket license-key benefit UUID
 - `BACKPOCKET_POLAR_CHECKOUT_URL`: public Polar checkout or product URL
+- `BACKPOCKET_POLAR_PORTAL_URL`: hosted Polar customer portal URL
 - `BACKPOCKET_POLAR_API_BASE_URL`: defaults to `https://api.polar.sh/v1`
 
 Current Polar setup:
@@ -76,6 +77,7 @@ Current Polar setup:
 - License benefit: `8c725bcf-1e7f-402b-90c8-19440b7654d2` (`BackPocket`)
 - Price: `$5` one-time
 - Checkout: `https://buy.polar.sh/polar_cl_36BZ6cLy0UzrhGLAGQoXSNhKR9XKJE6DUFHFs0Ww7PE`
+- Portal: `https://polar.sh/g-squared/portal`
 
 The Polar `license_keys` benefit has prefix `BP`, no expiry, and `3` active
 devices with customer admin enabled so customers can free old devices.

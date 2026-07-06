@@ -64,9 +64,12 @@ final class LicenseManager: ObservableObject {
         self.client = client
         self.keychain = keychain
 
-        if client.isConfigured, let snapshot = Self.loadSnapshot(from: defaults), Self.snapshotIsFresh(snapshot) {
+        // A cached snapshot only grants access alongside the key in the Keychain,
+        // so an edited or forged UserDefaults snapshot can't unlock the app on its own.
+        let hasStoredKey = keychain.licenseKey != nil
+        if client.isConfigured, hasStoredKey, let snapshot = Self.loadSnapshot(from: defaults), Self.snapshotIsFresh(snapshot) {
             state = snapshot.isUsable ? .active(snapshot) : .inactive(Self.inactiveReason(for: snapshot))
-        } else if client.isConfigured, keychain.licenseKey == nil {
+        } else if client.isConfigured, !hasStoredKey {
             state = .missing
         } else if client.isConfigured {
             state = .inactive("Needs license check")
@@ -82,7 +85,10 @@ final class LicenseManager: ObservableObject {
             return
         }
         guard let key = keychain.licenseKey else {
-            clearStoredLicense()
+            // Being licensed requires the key in the Keychain. If it's genuinely
+            // gone the user is unlicensed — but never wipe the cached snapshot on a
+            // mere read failure; only an explicit "Remove" clears stored data.
+            state = currentSnapshot == nil ? .missing : .inactive("License key not found on this Mac")
             return
         }
 
@@ -265,6 +271,14 @@ struct PolarLicenseClient {
 
     var checkoutURL: URL? {
         guard let value = Bundle.main.object(forInfoDictionaryKey: "BackpocketPolarCheckoutURL") as? String,
+              !value.isEmpty,
+              !value.hasPrefix("$(")
+        else { return nil }
+        return URL(string: value)
+    }
+
+    var portalURL: URL? {
+        guard let value = Bundle.main.object(forInfoDictionaryKey: "BackpocketPolarPortalURL") as? String,
               !value.isEmpty,
               !value.hasPrefix("$(")
         else { return nil }
@@ -502,16 +516,19 @@ struct LicenseKeychain {
             guard let newValue, let data = newValue.data(using: .utf8) else { return }
             var item = baseQuery
             item[kSecValueData as String] = data
-            item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+            item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
             SecItemAdd(item as CFDictionary, nil)
         }
     }
 
+    // Data-protection keychain: items are scoped to the app's Team ID rather than a
+    // specific code signature, so re-signed builds don't trigger an access prompt.
     private var baseQuery: [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: account
+            kSecAttrAccount as String: account,
+            kSecUseDataProtectionKeychain as String: true
         ]
     }
 }
