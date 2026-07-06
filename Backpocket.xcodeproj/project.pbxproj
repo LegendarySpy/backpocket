@@ -32,6 +32,7 @@
 		A10000000000000000000009 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		A1000000000000000000000A /* BPLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BPLog.swift; sourceTree = "<group>"; };
 		A1000000000000000000000B /* Auth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Auth.swift; sourceTree = "<group>"; };
+		A1000000000000000000000C /* Backpocket.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Backpocket.entitlements; sourceTree = "<group>"; };
 		A10000000000000000000010 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A10000000000000000000011 /* Backpocket.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Backpocket.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -69,6 +70,7 @@
 				A10000000000000000000009 /* SettingsView.swift */,
 				A1000000000000000000000A /* BPLog.swift */,
 				A1000000000000000000000B /* Auth.swift */,
+				A1000000000000000000000C /* Backpocket.entitlements */,
 				A10000000000000000000010 /* Info.plist */,
 			);
 			path = Backpocket;
@@ -214,6 +216,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				CODE_SIGN_ENTITLEMENTS = Backpocket/Backpocket.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = S8W699VPD7;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -234,6 +237,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				CODE_SIGN_ENTITLEMENTS = Backpocket/Backpocket.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = S8W699VPD7;
 				ENABLE_HARDENED_RUNTIME = YES;

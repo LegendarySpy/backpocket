@@ -54,6 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         OptionDoubleTap.shared.start {
             PaletteController.shared.toggle()
         }
+        _ = FactStore.shared
 
         let trusted = AXIsProcessTrustedWithOptions(
             [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary

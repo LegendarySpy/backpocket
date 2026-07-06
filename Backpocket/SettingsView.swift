@@ -143,6 +143,7 @@ private struct FactRow: View {
 
 private struct GeneralTab: View {
     @ObservedObject private var settings = AppSettings.shared
+    @ObservedObject private var store = FactStore.shared
     @State private var accessibilityGranted = AXIsProcessTrusted()
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
@@ -166,6 +167,11 @@ private struct GeneralTab: View {
                         launchAtLogin = SMAppService.mainApp.status == .enabled
                     }
                 }
+
+            LabeledContent("iCloud sync") {
+                Text(store.iCloudStatus)
+                    .foregroundStyle(.secondary)
+            }
 
             if !accessibilityGranted {
                 LabeledContent {
