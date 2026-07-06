@@ -21,14 +21,11 @@ env:
 
 jobs:
   release:
-    runs-on: macos-latest
+    runs-on: macos-26
 
     steps:
       - name: Check out source
         uses: actions/checkout@v4
-
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
 
       - name: Import Developer ID certificate
         env:
@@ -47,6 +44,22 @@ jobs:
           security import "$CERTIFICATE_PATH" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
           security list-keychain -d user -s "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+      - name: Install provisioning profile
+        env:
+          PROVISIONING_PROFILE_BASE64: ${{ secrets.MACOS_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "$PROVISIONING_PROFILE_BASE64" ]; then
+            echo "::error::Set MACOS_PROVISIONING_PROFILE_BASE64 to a base64-encoded Developer ID provisioning profile for com.backpocket.mac with iCloud enabled."
+            exit 1
+          fi
+          PROFILE_PATH="$HOME/Library/MobileDevice/Provisioning Profiles/Backpocket.provisionprofile"
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          echo "$PROVISIONING_PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH"
+          security cms -D -i "$PROFILE_PATH" > "$RUNNER_TEMP/profile.plist"
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" "$RUNNER_TEMP/profile.plist")
+          echo "PROVISIONING_PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
 
       - name: Resolve packages
         run: xcodebuild -resolvePackageDependencies -project "$PROJECT" -scheme "$SCHEME" -clonedSourcePackagesDirPath .build/SourcePackages
@@ -68,6 +81,7 @@ jobs:
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Developer ID Application" \
+            PROVISIONING_PROFILE="$PROVISIONING_PROFILE_UUID" \
             OTHER_CODE_SIGN_FLAGS="--timestamp"
 
       - name: Notarize and package app
