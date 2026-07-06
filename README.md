@@ -39,6 +39,13 @@ Use a separate public `LegendarySpy/backpocket-updates` repository for update
 artifacts so this source repository can stay private. Configure GitHub Pages on
 that repository to publish from the `gh-pages` branch.
 
+Run the source repository's `Release` workflow to build, sign, notarize, and
+attach `Backpocket.zip` to a draft release in `LegendarySpy/backpocket-updates`.
+Edit that draft release body as the changelog. Sparkle is not updated until the
+release is published. When a release is published, edited, deleted, or
+unpublished, the updates repository rebuilds `appcast.xml` from the latest
+published release.
+
 The release workflow expects these source-repo secrets:
 
 - `MACOS_CERTIFICATE_BASE64`: Developer ID Application `.p12`, base64 encoded
@@ -47,8 +54,11 @@ The release workflow expects these source-repo secrets:
 - `APPLE_ID`: Apple ID used for notarization
 - `APPLE_APP_SPECIFIC_PASSWORD`: app-specific password for notarization
 - `APPLE_TEAM_ID`: Apple developer team ID
-- `SPARKLE_PRIVATE_KEY`: exported Sparkle private key
 - `UPDATES_REPO_TOKEN`: token that can write to `LegendarySpy/backpocket-updates`
+
+The public updates repository expects this repository secret:
+
+- `SPARKLE_PRIVATE_KEY`: exported Sparkle private key
 
 Export the Sparkle private key for the GitHub secret with:
 
