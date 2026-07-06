@@ -40,7 +40,7 @@ artifacts so this source repository can stay private. Configure GitHub Pages on
 that repository to publish from the `gh-pages` branch.
 
 Run the source repository's `Release` workflow to build, sign, notarize, and
-attach `Backpocket.zip` to a draft release in `LegendarySpy/backpocket-updates`.
+attach `Backpocket.dmg` to a draft release in `LegendarySpy/backpocket-updates`.
 Edit that draft release body as the changelog. Sparkle is not updated until the
 release is published. When a release is published, edited, deleted, or
 unpublished, the updates repository rebuilds `appcast.xml` from the latest
