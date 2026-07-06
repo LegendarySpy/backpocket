@@ -28,6 +28,14 @@
 	<true/>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>BackpocketPolarAPIBaseURL</key>
+	<string>$(BACKPOCKET_POLAR_API_BASE_URL)</string>
+	<key>BackpocketPolarCheckoutURL</key>
+	<string>$(BACKPOCKET_POLAR_CHECKOUT_URL)</string>
+	<key>BackpocketPolarLicenseBenefitID</key>
+	<string>$(BACKPOCKET_POLAR_LICENSE_BENEFIT_ID)</string>
+	<key>BackpocketPolarOrganizationID</key>
+	<string>$(BACKPOCKET_POLAR_ORGANIZATION_ID)</string>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUFeedURL</key>

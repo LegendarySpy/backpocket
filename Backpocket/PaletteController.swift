@@ -38,6 +38,9 @@ final class PaletteModel: ObservableObject {
 
     func refresh() {
         var facts = FactStore.shared.facts
+        if !LicenseManager.shared.state.isLicensed {
+            facts = Array(facts.prefix(LicenseManager.freeFactLimit))
+        }
         if !parsed.base.trimmingCharacters(in: .whitespaces).isEmpty {
             facts += PlaceholderResolver.builtInFacts
         }

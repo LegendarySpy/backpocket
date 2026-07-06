@@ -11,6 +11,7 @@ Backpocket is a tiny macOS menu bar utility. Double-tap ⌥ Option in any text f
 - Keystroke insertion via synthetic typing, so values never enter the clipboard
 - Dynamic placeholders in values and built-in palette results: `{date}`, `{shortdate}`, `{longdate}`, `{time}`, `{datetime}`, `{iso}`, `{timestamp}`, `{clipboard}`, `{username}`, `{fullname}`, `{hostname}`, `{app}`, `{uuid}`, or offset/formatted dates like `{date:+7:MMM d}`
 - iCloud sync for your saved facts across Macs signed into the same Apple Account
+- Free for up to 5 saved facts; a one-time license unlocks unlimited facts
 - One permission: Accessibility (to find your caret and type for you)
 - Configurable trigger (double-tap ⌥ ⌃ ⌘ or ⇧), launch at login, native tabbed Settings
 
@@ -56,3 +57,33 @@ Export the Sparkle private key for the GitHub secret with:
 ```
 
 Do not commit the exported private key.
+
+## Licensing
+
+Backpocket validates Polar license keys from the app using Polar's public
+Customer Portal license-key endpoints. Configure these build settings before a
+paid release:
+
+- `BACKPOCKET_POLAR_ORGANIZATION_ID`: Polar organization UUID
+- `BACKPOCKET_POLAR_LICENSE_BENEFIT_ID`: Backpocket license-key benefit UUID
+- `BACKPOCKET_POLAR_CHECKOUT_URL`: public Polar checkout or product URL
+- `BACKPOCKET_POLAR_API_BASE_URL`: defaults to `https://api.polar.sh/v1`
+
+Current Polar setup:
+
+- Organization: `98d75121-191c-4136-aa56-2c7803173973` (`g-squared`)
+- Product: `250c1267-b46c-4a14-affa-0822d0f85ebf` (`Backpocket`)
+- License benefit: `8c725bcf-1e7f-402b-90c8-19440b7654d2` (`BackPocket`)
+- Price: `$5` one-time
+- Checkout: `https://buy.polar.sh/polar_cl_36BZ6cLy0UzrhGLAGQoXSNhKR9XKJE6DUFHFs0Ww7PE`
+
+The Polar `license_keys` benefit has prefix `BP`, no expiry, and `3` active
+devices with customer admin enabled so customers can free old devices.
+
+Backpocket runs free with up to 5 saved facts. A valid license unlocks unlimited
+saved facts. Extra facts are preserved locally if a license is removed, but only
+the first 5 are available in the palette until the license is restored.
+
+License keys are stored in Keychain. The app stores only activation/cache
+metadata in `UserDefaults`, refreshes with Polar on launch, and allows a short
+offline grace period after the last successful validation.

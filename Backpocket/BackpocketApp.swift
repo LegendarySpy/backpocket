@@ -70,6 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             UserDefaults.standard.set(true, forKey: "hasLaunched")
             showSettings()
         }
+        LicenseManager.shared.refresh()
     }
 
     func showSettings() {

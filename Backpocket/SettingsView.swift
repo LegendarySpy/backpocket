@@ -52,8 +52,13 @@ struct SettingsRootView: View {
 
 private struct FactsTab: View {
     @ObservedObject private var store = FactStore.shared
+    @ObservedObject private var license = LicenseManager.shared
     @FocusState private var focusedFact: UUID?
     @State private var showingPlaceholderHelp = false
+
+    private var isAtFreeLimit: Bool {
+        !license.state.isLicensed && store.facts.count >= LicenseManager.freeFactLimit
+    }
 
     private var hasEmptyFact: Bool {
         store.facts.contains {
@@ -66,9 +71,13 @@ private struct FactsTab: View {
         VStack(spacing: 0) {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 6) {
-                    ForEach($store.facts) { $fact in
-                        FactRow(fact: $fact, focus: $focusedFact) {
-                            let id = fact.id
+                    ForEach(store.facts.indices, id: \.self) { index in
+                        FactRow(
+                            fact: $store.facts[index],
+                            focus: $focusedFact,
+                            isPlanLocked: isPlanLocked(index)
+                        ) {
+                            let id = store.facts[index].id
                             DispatchQueue.main.async {
                                 withAnimation { store.remove(id) }
                             }
@@ -87,7 +96,20 @@ private struct FactsTab: View {
                 } label: {
                     Label("Add Fact", systemImage: "plus")
                 }
-                .disabled(hasEmptyFact)
+                .disabled(hasEmptyFact || isAtFreeLimit)
+
+                if isAtFreeLimit {
+                    Text("Free limit reached")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(.secondary)
+
+                    if let checkoutURL = PolarLicenseClient().checkoutURL {
+                        Button("Unlock") {
+                            NSWorkspace.shared.open(checkoutURL)
+                        }
+                    }
+                }
+
                 Spacer()
                 Button {
                     showingPlaceholderHelp.toggle()
@@ -104,6 +126,10 @@ private struct FactsTab: View {
             .padding(10)
         }
         .frame(width: 440, height: 360)
+    }
+
+    private func isPlanLocked(_ index: Int) -> Bool {
+        !license.state.isLicensed && index >= LicenseManager.freeFactLimit
     }
 }
 
@@ -149,6 +175,7 @@ private struct PlaceholderHelpView: View {
 private struct FactRow: View {
     @Binding var fact: Fact
     @FocusState.Binding var focus: UUID?
+    var isPlanLocked: Bool
     var onDelete: () -> Void
     @State private var hovering = false
     @State private var valueRevealed = false
@@ -163,19 +190,27 @@ private struct FactRow: View {
                 .font(.system(size: 13, weight: .semibold))
                 .focused($focus, equals: fact.id)
                 .frame(width: 120, alignment: .leading)
+                .disabled(isPlanLocked)
 
             valueField
 
-            Button {
-                toggleSensitivity()
-            } label: {
-                Image(systemName: fact.isSensitive ? "lock.fill" : "lock.open")
+            if isPlanLocked {
+                Image(systemName: "key.fill")
                     .font(.system(size: 11))
-                    .foregroundStyle(fact.isSensitive ? Color.accentColor : Color.secondary)
+                    .foregroundStyle(.tertiary)
+                    .help("Unlock unlimited facts")
+            } else {
+                Button {
+                    toggleSensitivity()
+                } label: {
+                    Image(systemName: fact.isSensitive ? "lock.fill" : "lock.open")
+                        .font(.system(size: 11))
+                        .foregroundStyle(fact.isSensitive ? Color.accentColor : Color.secondary)
+                }
+                .buttonStyle(.plain)
+                .opacity(fact.isSensitive || hovering ? 1 : 0)
+                .help(fact.isSensitive ? "Unlock this fact" : "Ask for Touch ID before inserting this fact")
             }
-            .buttonStyle(.plain)
-            .opacity(fact.isSensitive || hovering ? 1 : 0)
-            .help(fact.isSensitive ? "Unlock this fact" : "Ask for Touch ID before inserting this fact")
 
             Button(action: onDelete) {
                 Image(systemName: "minus.circle.fill")
@@ -188,6 +223,7 @@ private struct FactRow: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
         .background(.quinary, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .opacity(isPlanLocked ? 0.58 : 1)
         .onHover { hovering = $0 }
         .onAppear { valueRevealed = !fact.isSensitive || Auth.isUnlocked }
         .onChange(of: fact.isSensitive) { _, isSensitive in
@@ -215,10 +251,12 @@ private struct FactRow: View {
             }
             .buttonStyle(.plain)
             .help("Unlock with Touch ID to view or edit")
+            .disabled(isPlanLocked)
         } else {
             TextField("Value", text: $fact.value)
                 .font(.system(size: 12.5, design: .monospaced))
                 .foregroundStyle(.secondary)
+                .disabled(isPlanLocked)
         }
     }
 
@@ -304,40 +342,125 @@ private struct GeneralTab: View {
 }
 
 private struct AboutTab: View {
+    @ObservedObject private var license = LicenseManager.shared
+    @State private var key = ""
+
     private var version: String {
         let short = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
         return "\(short) (\(build))"
     }
 
+    private var checkoutURL: URL? {
+        PolarLicenseClient().checkoutURL
+    }
+
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 0) {
+            header
+
+            Form {
+                Section("License") {
+                    LabeledContent("Status") {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(statusColor)
+                                .frame(width: 8, height: 8)
+                            Text(license.state.summary)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    if let snapshot = license.currentSnapshot {
+                        LabeledContent("Key", value: snapshot.displayKey)
+                        if let email = snapshot.customerEmail {
+                            LabeledContent("Account", value: email)
+                        }
+                        if let expiresAt = snapshot.expiresAt {
+                            LabeledContent("Expires", value: expiresAt.formatted(date: .abbreviated, time: .omitted))
+                        }
+                    } else {
+                        HStack(spacing: 8) {
+                            SecureField("License key", text: $key)
+                                .textContentType(.oneTimeCode)
+                                .disabled(license.isWorking)
+                                .onSubmit { activate() }
+                            Button("Activate") { activate() }
+                                .disabled(license.isWorking || key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
+                    }
+
+                    HStack(spacing: 14) {
+                        if license.currentSnapshot == nil, let checkoutURL {
+                            Button("Buy a license") {
+                                NSWorkspace.shared.open(checkoutURL)
+                            }
+                        }
+                        Spacer()
+                        Button("Refresh") { license.refresh() }
+                            .disabled(license.isWorking)
+                        if license.currentSnapshot != nil {
+                            Button("Remove") { license.deactivate() }
+                                .disabled(license.isWorking)
+                        }
+                    }
+                    .buttonStyle(.link)
+                    .controlSize(.small)
+                }
+            }
+            .formStyle(.grouped)
+        }
+        .frame(width: 440, height: 360)
+    }
+
+    private var header: some View {
+        VStack(spacing: 12) {
             Image(systemName: "rectangle.stack.fill")
                 .font(.system(size: 26, weight: .semibold))
                 .foregroundStyle(.white)
-                .frame(width: 56, height: 56)
+                .frame(width: 60, height: 60)
                 .background(
                     LinearGradient(colors: [.indigo, .blue], startPoint: .top, endPoint: .bottom),
-                    in: RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
                 )
-                .padding(.bottom, 4)
 
-            Text("Backpocket")
-                .font(.system(size: 16, weight: .semibold))
-            Text("Version \(version)")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
+            VStack(spacing: 3) {
+                Text("Backpocket")
+                    .font(.system(size: 17, weight: .semibold))
+                Text("Version \(version)")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                Text("Your facts, one double-tap away.")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(.tertiary)
+                    .padding(.top, 1)
+            }
 
             Button("Check for Updates…") {
                 AppDelegate.shared?.checkForUpdates()
             }
-            .padding(.top, 8)
-
-            Text("Your facts, one double-tap away.")
-                .font(.system(size: 11))
-                .foregroundStyle(.tertiary)
-                .padding(.top, 12)
+            .buttonStyle(.link)
+            .font(.system(size: 12))
         }
-        .frame(width: 440, height: 360)
+        .frame(maxWidth: .infinity)
+        .padding(.top, 28)
+        .padding(.bottom, 18)
+    }
+
+    private func activate() {
+        guard !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        license.activate(key: key)
+        key = ""
+    }
+
+    private var statusColor: Color {
+        switch license.state {
+        case .active:
+            .green
+        case .validating:
+            .orange
+        default:
+            .secondary
+        }
     }
 }
