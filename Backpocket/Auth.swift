@@ -7,9 +7,12 @@ enum Auth {
     static let gracePeriod: TimeInterval = 300
     private static var lastSuccess: TimeInterval = 0
 
+    static var isUnlocked: Bool {
+        ProcessInfo.processInfo.systemUptime - lastSuccess < gracePeriod
+    }
+
     static func requireIfNeeded(reason: String, onSuccess: @escaping () -> Void) {
-        let now = ProcessInfo.processInfo.systemUptime
-        if now - lastSuccess < gracePeriod {
+        if isUnlocked {
             onSuccess()
             return
         }

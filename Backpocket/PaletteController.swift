@@ -10,6 +10,9 @@ final class PaletteModel: ObservableObject {
     @Published var selection = 0
     @Published var growsUp = true
 
+    var appIdentifier: String? {
+        didSet { refresh() }
+    }
     var onCommit: ((Fact, String) -> Void)?
     var onCommitRaw: ((String) -> Void)?
     var onDismiss: (() -> Void)?
@@ -23,7 +26,7 @@ final class PaletteModel: ObservableObject {
     }
 
     func refresh() {
-        results = Fuzzy.rank(parsed.base, in: FactStore.shared.facts)
+        results = Fuzzy.rank(parsed.base, in: FactStore.shared.facts, context: appIdentifier)
         selection = 0
     }
 
@@ -151,6 +154,7 @@ final class PaletteController: NSObject, NSWindowDelegate {
 
     func show() {
         targetApp = NSWorkspace.shared.frontmostApplication
+        model.appIdentifier = Self.appIdentifier(for: targetApp)
         let anchor = CaretLocator.anchor()
         position(at: anchor)
         model.reset()
@@ -174,9 +178,10 @@ final class PaletteController: NSObject, NSWindowDelegate {
     }
 
     private func insert(_ fact: Fact, typing value: String) {
+        let appIdentifier = model.appIdentifier
         dismiss()
-        FactStore.shared.markUsed(fact.id)
         let type = {
+            FactStore.shared.markUsed(fact.id, appIdentifier: appIdentifier)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
                 Typer.type(value)
             }
@@ -220,6 +225,17 @@ final class PaletteController: NSObject, NSWindowDelegate {
         if let field = view as? NSTextField { return field }
         for subview in view.subviews {
             if let field = firstTextField(in: subview) { return field }
+        }
+        return nil
+    }
+
+    private static func appIdentifier(for app: NSRunningApplication?) -> String? {
+        guard let app else { return nil }
+        if let bundleIdentifier = app.bundleIdentifier, !bundleIdentifier.isEmpty {
+            return bundleIdentifier
+        }
+        if let localizedName = app.localizedName, !localizedName.isEmpty {
+            return "name:\(localizedName)"
         }
         return nil
     }

@@ -88,9 +88,6 @@ private struct FactsTab: View {
                 }
                 .disabled(hasEmptyFact)
                 Spacer()
-                Text("name+text adds text · [[+]] in a value picks the spot")
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(.tertiary)
             }
             .padding(10)
         }
@@ -103,6 +100,11 @@ private struct FactRow: View {
     @FocusState.Binding var focus: UUID?
     var onDelete: () -> Void
     @State private var hovering = false
+    @State private var valueRevealed = false
+
+    private var valueIsLocked: Bool {
+        fact.isSensitive && !valueRevealed
+    }
 
     var body: some View {
         HStack(spacing: 10) {
@@ -111,12 +113,10 @@ private struct FactRow: View {
                 .focused($focus, equals: fact.id)
                 .frame(width: 120, alignment: .leading)
 
-            TextField("Value", text: $fact.value)
-                .font(.system(size: 12.5, design: .monospaced))
-                .foregroundStyle(.secondary)
+            valueField
 
             Button {
-                fact.isSensitive.toggle()
+                toggleSensitivity()
             } label: {
                 Image(systemName: fact.isSensitive ? "lock.fill" : "lock.open")
                     .font(.system(size: 11))
@@ -124,7 +124,7 @@ private struct FactRow: View {
             }
             .buttonStyle(.plain)
             .opacity(fact.isSensitive || hovering ? 1 : 0)
-            .help("Ask for Touch ID before inserting this fact")
+            .help(fact.isSensitive ? "Unlock this fact" : "Ask for Touch ID before inserting this fact")
 
             Button(action: onDelete) {
                 Image(systemName: "minus.circle.fill")
@@ -138,6 +138,59 @@ private struct FactRow: View {
         .padding(.vertical, 9)
         .background(.quinary, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
         .onHover { hovering = $0 }
+        .onAppear { valueRevealed = !fact.isSensitive || Auth.isUnlocked }
+        .onChange(of: fact.isSensitive) { _, isSensitive in
+            valueRevealed = !isSensitive || Auth.isUnlocked
+        }
+    }
+
+    @ViewBuilder
+    private var valueField: some View {
+        if valueIsLocked {
+            Button {
+                revealValue()
+            } label: {
+                HStack(spacing: 8) {
+                    Text(maskedValue)
+                        .font(.system(size: 12.5, design: .monospaced))
+                        .lineLimit(1)
+                    Text("Hidden")
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundStyle(.tertiary)
+                }
+                .foregroundStyle(.tertiary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Unlock with Touch ID to view or edit")
+        } else {
+            TextField("Value", text: $fact.value)
+                .font(.system(size: 12.5, design: .monospaced))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var maskedValue: String {
+        String(repeating: "•", count: min(max(fact.value.count, 6), 18))
+    }
+
+    private func revealValue() {
+        Auth.requireIfNeeded(reason: "show \(fact.name.isEmpty ? "locked fact" : fact.name)") {
+            valueRevealed = true
+        }
+    }
+
+    private func toggleSensitivity() {
+        if fact.isSensitive {
+            Auth.requireIfNeeded(reason: "unlock \(fact.name.isEmpty ? "fact" : fact.name)") {
+                fact.isSensitive = false
+                valueRevealed = true
+            }
+        } else {
+            fact.isSensitive = true
+            valueRevealed = false
+        }
     }
 }
 
@@ -146,6 +199,13 @@ private struct GeneralTab: View {
     @ObservedObject private var store = FactStore.shared
     @State private var accessibilityGranted = AXIsProcessTrusted()
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+
+    private var iCloudSync: Binding<Bool> {
+        Binding(
+            get: { store.iCloudSyncEnabled },
+            set: { store.setICloudSyncEnabled($0) }
+        )
+    }
 
     var body: some View {
         Form {
@@ -168,9 +228,9 @@ private struct GeneralTab: View {
                     }
                 }
 
-            LabeledContent("iCloud sync") {
+            Toggle(isOn: iCloudSync) {
+                Text("Sync with iCloud")
                 Text(store.iCloudStatus)
-                    .foregroundStyle(.secondary)
             }
 
             if !accessibilityGranted {

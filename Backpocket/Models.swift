@@ -6,13 +6,25 @@ struct Fact: Identifiable, Codable, Equatable {
     var name: String
     var value: String
     var lastUsed: Date?
+    var useCount: Int
+    var appUsage: [String: FactUsage]
     var isSensitive: Bool
 
-    init(id: UUID = UUID(), name: String, value: String, lastUsed: Date? = nil, isSensitive: Bool = false) {
+    init(
+        id: UUID = UUID(),
+        name: String,
+        value: String,
+        lastUsed: Date? = nil,
+        useCount: Int = 0,
+        appUsage: [String: FactUsage] = [:],
+        isSensitive: Bool = false
+    ) {
         self.id = id
         self.name = name
         self.value = value
         self.lastUsed = lastUsed
+        self.useCount = useCount
+        self.appUsage = appUsage
         self.isSensitive = isSensitive
     }
 
@@ -22,8 +34,15 @@ struct Fact: Identifiable, Codable, Equatable {
         name = try container.decode(String.self, forKey: .name)
         value = try container.decode(String.self, forKey: .value)
         lastUsed = try container.decodeIfPresent(Date.self, forKey: .lastUsed)
+        useCount = try container.decodeIfPresent(Int.self, forKey: .useCount) ?? (lastUsed == nil ? 0 : 1)
+        appUsage = try container.decodeIfPresent([String: FactUsage].self, forKey: .appUsage) ?? [:]
         isSensitive = try container.decodeIfPresent(Bool.self, forKey: .isSensitive) ?? false
     }
+}
+
+struct FactUsage: Codable, Equatable {
+    var count: Int
+    var lastUsed: Date
 }
 
 @MainActor
@@ -33,6 +52,7 @@ final class FactStore: ObservableObject {
     @Published var facts: [Fact] {
         didSet { scheduleSave() }
     }
+    @Published private(set) var iCloudSyncEnabled: Bool
     @Published private(set) var iCloudStatus = "Syncing with iCloud"
 
     private let fileURL: URL
@@ -43,6 +63,7 @@ final class FactStore: ObservableObject {
     private var localRevision: Date
 
     private static let cloudPayloadKey = "factsPayload"
+    private static let iCloudSyncEnabledKey = "iCloudSyncEnabled"
     private static let localRevisionKey = "factsRevision"
     private static let deviceIDKey = "deviceID"
 
@@ -52,6 +73,7 @@ final class FactStore: ObservableObject {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         fileURL = dir.appendingPathComponent("facts.json")
         localRevision = Date(timeIntervalSince1970: UserDefaults.standard.double(forKey: Self.localRevisionKey))
+        iCloudSyncEnabled = UserDefaults.standard.object(forKey: Self.iCloudSyncEnabledKey) as? Bool ?? true
 
         let loadedFromDisk: Bool
         if let data = try? Data(contentsOf: fileURL),
@@ -63,7 +85,11 @@ final class FactStore: ObservableObject {
             loadedFromDisk = false
         }
 
-        startICloudSync(loadedFromDisk: loadedFromDisk)
+        if iCloudSyncEnabled {
+            startICloudSync(loadedFromDisk: loadedFromDisk)
+        } else {
+            iCloudStatus = "Off"
+        }
     }
 
     func add() -> Fact {
@@ -76,24 +102,60 @@ final class FactStore: ObservableObject {
         facts.removeAll { $0.id == id }
     }
 
-    func markUsed(_ id: UUID) {
+    func markUsed(_ id: UUID, appIdentifier: String?) {
         guard let index = facts.firstIndex(where: { $0.id == id }) else { return }
-        facts[index].lastUsed = Date()
+        let now = Date()
+        facts[index].lastUsed = now
+        facts[index].useCount += 1
+
+        if let appIdentifier {
+            var usage = facts[index].appUsage[appIdentifier] ?? FactUsage(count: 0, lastUsed: now)
+            usage.count += 1
+            usage.lastUsed = now
+            facts[index].appUsage[appIdentifier] = usage
+            pruneAppUsage(for: index)
+        }
+    }
+
+    private func pruneAppUsage(for index: Int) {
+        let maxTrackedApps = 24
+        guard facts[index].appUsage.count > maxTrackedApps else { return }
+
+        facts[index].appUsage = facts[index].appUsage
+            .sorted { $0.value.lastUsed > $1.value.lastUsed }
+            .prefix(maxTrackedApps)
+            .reduce(into: [:]) { partial, entry in
+                partial[entry.key] = entry.value
+            }
+    }
+
+    func setICloudSyncEnabled(_ enabled: Bool) {
+        guard iCloudSyncEnabled != enabled else { return }
+
+        iCloudSyncEnabled = enabled
+        UserDefaults.standard.set(enabled, forKey: Self.iCloudSyncEnabledKey)
+
+        if enabled {
+            startICloudSync(loadedFromDisk: true)
+        } else {
+            stopICloudSync()
+        }
     }
 
     /// Coalesces the per-keystroke edits from the settings fields into one write.
     private func scheduleSave() {
-        let syncToCloud = !isApplyingRemoteChange
+        let updateRevision = !isApplyingRemoteChange
+        let syncToCloud = iCloudSyncEnabled && updateRevision
         saveTask?.cancel()
         saveTask = Task {
             try? await Task.sleep(for: .milliseconds(400))
             guard !Task.isCancelled else { return }
-            save(syncToCloud: syncToCloud)
+            save(updateRevision: updateRevision, syncToCloud: syncToCloud)
         }
     }
 
-    private func save(syncToCloud: Bool) {
-        if syncToCloud {
+    private func save(updateRevision: Bool, syncToCloud: Bool) {
+        if updateRevision {
             localRevision = Date()
             UserDefaults.standard.set(localRevision.timeIntervalSince1970, forKey: Self.localRevisionKey)
         }
@@ -110,6 +172,17 @@ final class FactStore: ObservableObject {
     }
 
     private func startICloudSync(loadedFromDisk: Bool) {
+        guard iCloudSyncEnabled else {
+            iCloudStatus = "Off"
+            return
+        }
+
+        iCloudStatus = "Syncing with iCloud"
+        if cloudObserver != nil {
+            cloudStore.synchronize()
+            return
+        }
+
         cloudObserver = NotificationCenter.default.addObserver(
             forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
             object: cloudStore,
@@ -134,8 +207,18 @@ final class FactStore: ObservableObject {
         }
     }
 
+    private func stopICloudSync() {
+        if let cloudObserver {
+            NotificationCenter.default.removeObserver(cloudObserver)
+            self.cloudObserver = nil
+        }
+
+        iCloudStatus = "Off"
+    }
+
     private func handleICloudChange(_ notification: Notification) {
-        guard changedCloudKeys(from: notification).contains(Self.cloudPayloadKey),
+        guard iCloudSyncEnabled,
+              changedCloudKeys(from: notification).contains(Self.cloudPayloadKey),
               let remote = loadRemotePayload(),
               remote.revision > localRevision
         else { return }
@@ -149,6 +232,8 @@ final class FactStore: ObservableObject {
     }
 
     private func loadRemotePayload() -> SyncedFacts? {
+        guard iCloudSyncEnabled else { return nil }
+
         guard let data = cloudStore.data(forKey: Self.cloudPayloadKey),
               let payload = try? JSONDecoder().decode(SyncedFacts.self, from: data)
         else {
@@ -167,11 +252,13 @@ final class FactStore: ObservableObject {
 
         localRevision = payload.revision
         UserDefaults.standard.set(localRevision.timeIntervalSince1970, forKey: Self.localRevisionKey)
-        save(syncToCloud: false)
+        save(updateRevision: false, syncToCloud: false)
         iCloudStatus = "On"
     }
 
     private func pushToICloud() {
+        guard iCloudSyncEnabled else { return }
+
         if localRevision.timeIntervalSince1970 == 0 {
             localRevision = Date()
             UserDefaults.standard.set(localRevision.timeIntervalSince1970, forKey: Self.localRevisionKey)
