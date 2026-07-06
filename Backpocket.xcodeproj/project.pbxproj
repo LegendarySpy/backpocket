@@ -17,6 +17,7 @@
 		A20000000000000000000008 /* PaletteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000008 /* PaletteView.swift */; };
 		A20000000000000000000009 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000009 /* SettingsView.swift */; };
 		A2000000000000000000000A /* BPLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000A /* BPLog.swift */; };
+		A2000000000000000000000B /* Auth.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000B /* Auth.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -30,6 +31,7 @@
 		A10000000000000000000008 /* PaletteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaletteView.swift; sourceTree = "<group>"; };
 		A10000000000000000000009 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		A1000000000000000000000A /* BPLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BPLog.swift; sourceTree = "<group>"; };
+		A1000000000000000000000B /* Auth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Auth.swift; sourceTree = "<group>"; };
 		A10000000000000000000010 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A10000000000000000000011 /* Backpocket.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Backpocket.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -66,6 +68,7 @@
 				A10000000000000000000008 /* PaletteView.swift */,
 				A10000000000000000000009 /* SettingsView.swift */,
 				A1000000000000000000000A /* BPLog.swift */,
+				A1000000000000000000000B /* Auth.swift */,
 				A10000000000000000000010 /* Info.plist */,
 			);
 			path = Backpocket;
@@ -156,6 +159,7 @@
 				A20000000000000000000008 /* PaletteView.swift in Sources */,
 				A20000000000000000000009 /* SettingsView.swift in Sources */,
 				A2000000000000000000000A /* BPLog.swift in Sources */,
+				A2000000000000000000000B /* Auth.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

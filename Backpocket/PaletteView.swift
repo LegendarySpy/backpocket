@@ -14,7 +14,7 @@ struct PaletteView: View {
                 rowPills
             }
         }
-        .padding(10)
+        .padding(34)
         .frame(
             maxWidth: .infinity, maxHeight: .infinity,
             alignment: model.growsUp ? .bottomLeading : .topLeading
@@ -30,7 +30,7 @@ struct PaletteView: View {
         let rows = Array(model.results.enumerated())
         ForEach(model.growsUp ? rows.reversed() : rows, id: \.element.id) { index, result in
             RowPill(result: result, isSelected: index == model.selection)
-                .onTapGesture { model.onCommit?(result.fact) }
+                .onTapGesture { model.commit(result.fact) }
                 .geometryGroup()
                 .transition(.blurReplace)
         }
@@ -48,17 +48,24 @@ struct PaletteView: View {
                 .onKeyPress(.escape) { model.onDismiss?(); return .handled }
                 .onKeyPress(.tab) { model.commit(); return .handled }
 
-            if model.results.isEmpty && !model.query.isEmpty {
-                Text("insert ↩")
-                    .font(.system(size: 10))
+            if let hint = trailingHint {
+                Text(hint)
+                    .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.tertiary)
+                    .lineLimit(1)
                     .transition(.blurReplace)
             }
         }
         .padding(.horizontal, 12)
         .frame(width: 230, height: 29)
         .glassEffect(.regular, in: .capsule)
-        .animation(.smooth(duration: 0.15), value: model.results.isEmpty && !model.query.isEmpty)
+        .animation(.smooth(duration: 0.15), value: trailingHint)
+    }
+
+    private var trailingHint: String? {
+        if model.results.isEmpty, !model.query.isEmpty { return "insert ↩" }
+        if let tag = model.activeTag, model.selected != nil { return "+\(tag)" }
+        return nil
     }
 }
 
@@ -74,15 +81,22 @@ private struct RowPill: View {
     }
 
     var body: some View {
-        Text(highlightedName)
-            .lineLimit(1)
-            .padding(.horizontal, 11)
-            .padding(.vertical, 5)
-            .frame(maxWidth: 230, alignment: .leading)
-            .fixedSize(horizontal: true, vertical: false)
-            .glassEffect(glass, in: .capsule)
-            .contentShape(.capsule)
-            .onHover { hovering = $0 }
+        HStack(spacing: 5) {
+            Text(highlightedName)
+                .lineLimit(1)
+            if result.fact.isSensitive {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 8.5))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(.horizontal, 11)
+        .padding(.vertical, 5)
+        .frame(maxWidth: 230, alignment: .leading)
+        .fixedSize(horizontal: true, vertical: false)
+        .glassEffect(glass, in: .capsule)
+        .contentShape(.capsule)
+        .onHover { hovering = $0 }
     }
 
     private var highlightedName: AttributedString {

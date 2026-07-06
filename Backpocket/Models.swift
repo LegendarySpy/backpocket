@@ -2,10 +2,28 @@ import Foundation
 import Combine
 
 struct Fact: Identifiable, Codable, Equatable {
-    var id = UUID()
+    var id: UUID
     var name: String
     var value: String
     var lastUsed: Date?
+    var isSensitive: Bool
+
+    init(id: UUID = UUID(), name: String, value: String, lastUsed: Date? = nil, isSensitive: Bool = false) {
+        self.id = id
+        self.name = name
+        self.value = value
+        self.lastUsed = lastUsed
+        self.isSensitive = isSensitive
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        value = try container.decode(String.self, forKey: .value)
+        lastUsed = try container.decodeIfPresent(Date.self, forKey: .lastUsed)
+        isSensitive = try container.decodeIfPresent(Bool.self, forKey: .isSensitive) ?? false
+    }
 }
 
 @MainActor
@@ -29,12 +47,12 @@ final class FactStore: ObservableObject {
            let saved = try? JSONDecoder().decode([Fact].self, from: data) {
             facts = saved
         } else {
-            facts = [Fact(name: "Email", value: "you@example.com", lastUsed: nil)]
+            facts = [Fact(name: "Email", value: "you@example.com")]
         }
     }
 
     func add() -> Fact {
-        let fact = Fact(name: "", value: "", lastUsed: nil)
+        let fact = Fact(name: "", value: "")
         facts.append(fact)
         return fact
     }

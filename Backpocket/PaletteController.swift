@@ -10,9 +10,11 @@ final class PaletteModel: ObservableObject {
     @Published var selection = 0
     @Published var growsUp = true
 
-    var onCommit: ((Fact) -> Void)?
+    var onCommit: ((Fact, String) -> Void)?
     var onCommitRaw: ((String) -> Void)?
     var onDismiss: (() -> Void)?
+
+    static let addMarker = "[[+]]"
 
     func reset() {
         query = ""
@@ -21,8 +23,34 @@ final class PaletteModel: ObservableObject {
     }
 
     func refresh() {
-        results = Fuzzy.rank(query, in: FactStore.shared.facts)
+        results = Fuzzy.rank(parsed.base, in: FactStore.shared.facts)
         selection = 0
+    }
+
+    /// "name+text" splits into the fuzzy query and the add-text.
+    private var parsed: (base: String, tag: String?) {
+        guard let plus = query.firstIndex(of: "+") else { return (query, nil) }
+        let tag = String(query[query.index(after: plus)...])
+        return (String(query[..<plus]), tag.isEmpty ? nil : tag)
+    }
+
+    var activeTag: String? { parsed.tag }
+
+    /// Where the add-text lands: an explicit [[+]] marker wins, then before the
+    /// @ of an email as "+text", then appended. No add-text strips the marker.
+    func resolvedValue(for fact: Fact) -> String {
+        let tag = parsed.tag
+        var value = fact.value
+        if value.contains(Self.addMarker) {
+            value = value.replacingOccurrences(of: Self.addMarker, with: tag ?? "")
+        } else if let tag {
+            if let at = value.firstIndex(of: "@"), value.contains(".") {
+                value.insert(contentsOf: "+\(tag)", at: at)
+            } else {
+                value += tag
+            }
+        }
+        return value
     }
 
     var selected: Fact? {
@@ -33,9 +61,13 @@ final class PaletteModel: ObservableObject {
         selection = min(max(selection + delta, 0), max(results.count - 1, 0))
     }
 
+    func commit(_ fact: Fact) {
+        onCommit?(fact, resolvedValue(for: fact))
+    }
+
     func commit() {
         if let fact = selected {
-            onCommit?(fact)
+            commit(fact)
         } else if !query.isEmpty {
             // No match: the query itself is what gets typed.
             onCommitRaw?(query)
@@ -45,6 +77,13 @@ final class PaletteModel: ObservableObject {
 
 final class PalettePanel: NSPanel {
     override var canBecomeKey: Bool { true }
+}
+
+final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let hitView = super.hitTest(point)
+        return hitView === self ? nil : hitView
+    }
 }
 
 @MainActor
@@ -57,7 +96,7 @@ final class PaletteController: NSObject, NSWindowDelegate {
 
     /// Fixed stage for the floating pills; empty regions are fully transparent,
     /// so the window itself never needs to resize.
-    private let panelSize = NSSize(width: 260, height: 216)
+    private let panelSize = NSSize(width: 308, height: 264)
 
     override init() {
         panel = PalettePanel(
@@ -78,9 +117,9 @@ final class PaletteController: NSObject, NSWindowDelegate {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         panel.animationBehavior = .utilityWindow
         panel.delegate = self
-        panel.contentView = NSHostingView(rootView: PaletteView(model: model))
+        panel.contentView = PassThroughHostingView(rootView: PaletteView(model: model))
 
-        model.onCommit = { [weak self] fact in self?.insert(fact) }
+        model.onCommit = { [weak self] fact, value in self?.insert(fact, typing: value) }
         model.onCommitRaw = { [weak self] text in self?.insertRaw(text) }
         model.onDismiss = { [weak self] in self?.dismiss() }
 
@@ -134,11 +173,18 @@ final class PaletteController: NSObject, NSWindowDelegate {
         if reactivate { targetApp?.activate() }
     }
 
-    private func insert(_ fact: Fact) {
+    private func insert(_ fact: Fact, typing value: String) {
         dismiss()
         FactStore.shared.markUsed(fact.id)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-            Typer.type(fact.value)
+        let type = {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+                Typer.type(value)
+            }
+        }
+        if fact.isSensitive {
+            Auth.requireIfNeeded(reason: "insert \(fact.name)", onSuccess: type)
+        } else {
+            type()
         }
     }
 
@@ -158,8 +204,8 @@ final class PaletteController: NSObject, NSWindowDelegate {
         model.growsUp = growsUp
 
         var origin = CGPoint(
-            x: anchor.point.x - 14,
-            y: growsUp ? anchor.point.y + 4 : anchor.point.y - anchor.clearance - panelSize.height
+            x: anchor.point.x - 38,
+            y: growsUp ? anchor.point.y - 20 : anchor.point.y - anchor.clearance - panelSize.height + 24
         )
         if let visible = screen?.visibleFrame {
             origin.x = min(max(visible.minX + 8, origin.x), visible.maxX - panelSize.width - 8)

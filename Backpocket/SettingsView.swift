@@ -88,6 +88,9 @@ private struct FactsTab: View {
                 }
                 .disabled(hasEmptyFact)
                 Spacer()
+                Text("name+text adds text · [[+]] in a value picks the spot")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.tertiary)
             }
             .padding(10)
         }
@@ -111,6 +114,17 @@ private struct FactRow: View {
             TextField("Value", text: $fact.value)
                 .font(.system(size: 12.5, design: .monospaced))
                 .foregroundStyle(.secondary)
+
+            Button {
+                fact.isSensitive.toggle()
+            } label: {
+                Image(systemName: fact.isSensitive ? "lock.fill" : "lock.open")
+                    .font(.system(size: 11))
+                    .foregroundStyle(fact.isSensitive ? Color.accentColor : Color.secondary)
+            }
+            .buttonStyle(.plain)
+            .opacity(fact.isSensitive || hovering ? 1 : 0)
+            .help("Ask for Touch ID before inserting this fact")
 
             Button(action: onDelete) {
                 Image(systemName: "minus.circle.fill")
