@@ -28,8 +28,8 @@ struct PaletteView: View {
     @ViewBuilder
     private var rowPills: some View {
         let rows = Array(model.results.enumerated())
-        ForEach(model.growsUp ? rows.reversed() : rows, id: \.element.id) { index, result in
-            RowPill(result: result, isSelected: index == model.selection)
+        ForEach(model.growsUp ? rows.reversed() : rows, id: \.element.id) { _, result in
+            RowPill(result: result, isSelected: result.id == model.selectedResult?.id)
                 .onTapGesture { model.commit(result.fact) }
                 .geometryGroup()
                 .transition(.blurReplace)
@@ -43,6 +43,7 @@ struct PaletteView: View {
                 .font(.system(size: 12, weight: .medium))
                 .focused($focused)
                 .onSubmit { model.commit() }
+                .onKeyPress(.return) { model.commit(); return .handled }
                 .onKeyPress(.upArrow) { model.adjustSelection(by: model.growsUp ? 1 : -1); return .handled }
                 .onKeyPress(.downArrow) { model.adjustSelection(by: model.growsUp ? -1 : 1); return .handled }
                 .onKeyPress(.escape) { model.onDismiss?(); return .handled }

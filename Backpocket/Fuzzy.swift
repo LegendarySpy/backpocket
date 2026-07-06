@@ -13,7 +13,7 @@ enum Fuzzy {
         _ query: String,
         in allFacts: [Fact],
         context appIdentifier: String? = nil,
-        limit: Int = 5,
+        limit: Int = 4,
         now: Date = Date()
     ) -> [FuzzyResult] {
         // Half-filled entries from the editor have nothing to show or type.

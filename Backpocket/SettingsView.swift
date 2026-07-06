@@ -53,6 +53,7 @@ struct SettingsRootView: View {
 private struct FactsTab: View {
     @ObservedObject private var store = FactStore.shared
     @FocusState private var focusedFact: UUID?
+    @State private var showingPlaceholderHelp = false
 
     private var hasEmptyFact: Bool {
         store.facts.contains {
@@ -88,10 +89,60 @@ private struct FactsTab: View {
                 }
                 .disabled(hasEmptyFact)
                 Spacer()
+                Button {
+                    showingPlaceholderHelp.toggle()
+                } label: {
+                    Image(systemName: "questionmark.circle")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.tertiary)
+                .help("Show placeholders")
+                .popover(isPresented: $showingPlaceholderHelp, arrowEdge: .bottom) {
+                    PlaceholderHelpView()
+                }
             }
             .padding(10)
         }
         .frame(width: 440, height: 360)
+    }
+}
+
+private struct PlaceholderHelpView: View {
+    private let examples = [
+        ("{date}", "2026-07-05"),
+        ("{shortdate}", "7/5/26"),
+        ("{longdate}", "July 5, 2026"),
+        ("{time}", "14:30"),
+        ("{datetime}", "2026-07-05 14:30"),
+        ("{date:+7:MMM d}", "Jul 12"),
+        ("{clipboard}", "current clipboard text"),
+        ("{username}", "macOS username"),
+        ("{hostname}", "computer name"),
+        ("{app}", "current app"),
+        ("{uuid}", "new UUID")
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Placeholders")
+                .font(.system(size: 13, weight: .semibold))
+            ForEach(examples, id: \.0) { token, description in
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(token)
+                        .font(.system(size: 12, design: .monospaced))
+                        .frame(width: 128, alignment: .leading)
+                    Text(description)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Text("[[+]] still controls where name+text lands.")
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+                .padding(.top, 2)
+        }
+        .padding(14)
+        .frame(width: 310, alignment: .leading)
     }
 }
 

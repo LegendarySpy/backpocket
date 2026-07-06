@@ -10,9 +10,8 @@ final class PaletteModel: ObservableObject {
     @Published var selection = 0
     @Published var growsUp = true
 
-    var appIdentifier: String? {
-        didSet { refresh() }
-    }
+    var appIdentifier: String?
+    var appName: String?
     var onCommit: ((Fact, String) -> Void)?
     var onCommitRaw: ((String) -> Void)?
     var onDismiss: (() -> Void)?
@@ -25,8 +24,24 @@ final class PaletteModel: ObservableObject {
         refresh()
     }
 
+    func prepareForShow(appIdentifier: String?, appName: String?) {
+        self.appIdentifier = appIdentifier
+        self.appName = appName
+        reset()
+    }
+
+    func prepareForDismiss() {
+        query = ""
+        selection = 0
+        results = []
+    }
+
     func refresh() {
-        results = Fuzzy.rank(parsed.base, in: FactStore.shared.facts, context: appIdentifier)
+        var facts = FactStore.shared.facts
+        if !parsed.base.trimmingCharacters(in: .whitespaces).isEmpty {
+            facts += PlaceholderResolver.builtInFacts
+        }
+        results = Fuzzy.rank(parsed.base, in: facts, context: appIdentifier)
         selection = 0
     }
 
@@ -53,11 +68,19 @@ final class PaletteModel: ObservableObject {
                 value += tag
             }
         }
-        return value
+        return PlaceholderResolver.resolve(value, context: placeholderContext)
+    }
+
+    var placeholderContext: PlaceholderResolver.Context {
+        PlaceholderResolver.Context(appName: appName)
+    }
+
+    var selectedResult: FuzzyResult? {
+        results.indices.contains(selection) ? results[selection] : nil
     }
 
     var selected: Fact? {
-        results.indices.contains(selection) ? results[selection].fact : nil
+        selectedResult?.fact
     }
 
     func adjustSelection(by delta: Int) {
@@ -69,8 +92,8 @@ final class PaletteModel: ObservableObject {
     }
 
     func commit() {
-        if let fact = selected {
-            commit(fact)
+        if let result = selectedResult {
+            commit(result.fact)
         } else if !query.isEmpty {
             // No match: the query itself is what gets typed.
             onCommitRaw?(query)
@@ -154,10 +177,10 @@ final class PaletteController: NSObject, NSWindowDelegate {
 
     func show() {
         targetApp = NSWorkspace.shared.frontmostApplication
-        model.appIdentifier = Self.appIdentifier(for: targetApp)
+        model.prepareForShow(appIdentifier: Self.appIdentifier(for: targetApp), appName: targetApp?.localizedName)
         let anchor = CaretLocator.anchor()
         position(at: anchor)
-        model.reset()
+        panel.contentView?.layoutSubtreeIfNeeded()
         panel.makeKeyAndOrderFront(nil)
         // SwiftUI's FocusState can fail inside a non-activating panel (seen in
         // Electron-hosted apps); claim first responder at the AppKit level too.
@@ -174,6 +197,7 @@ final class PaletteController: NSObject, NSWindowDelegate {
     /// when dismissal came from the user clicking into something else.
     func dismiss(reactivate: Bool = true) {
         panel.orderOut(nil)
+        model.prepareForDismiss()
         if reactivate { targetApp?.activate() }
     }
 
@@ -195,8 +219,9 @@ final class PaletteController: NSObject, NSWindowDelegate {
 
     private func insertRaw(_ text: String) {
         dismiss()
+        let value = PlaceholderResolver.resolve(text, context: model.placeholderContext)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-            Typer.type(text)
+            Typer.type(value)
         }
     }
 
