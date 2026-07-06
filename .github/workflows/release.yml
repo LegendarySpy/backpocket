@@ -1,0 +1,141 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Marketing version, for example 0.1.1"
+        required: true
+      release_notes:
+        description: "Short release notes shown by Sparkle"
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  APP_NAME: Backpocket
+  SCHEME: Backpocket
+  PROJECT: Backpocket.xcodeproj
+  UPDATES_REPO: LegendarySpy/backpocket-updates
+
+jobs:
+  release:
+    runs-on: macos-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Import Developer ID certificate
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          CERTIFICATE_PATH="$RUNNER_TEMP/developer-id.p12"
+
+          echo "$CERTIFICATE_BASE64" | base64 --decode > "$CERTIFICATE_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+      - name: Resolve packages
+        run: xcodebuild -resolvePackageDependencies -project "$PROJECT" -scheme "$SCHEME" -clonedSourcePackagesDirPath .build/SourcePackages
+
+      - name: Archive app
+        env:
+          VERSION: ${{ inputs.version }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          xcodebuild archive \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -archivePath ".build/${APP_NAME}.xcarchive" \
+            -clonedSourcePackagesDirPath .build/SourcePackages \
+            MARKETING_VERSION="$VERSION" \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Developer ID Application" \
+            OTHER_CODE_SIGN_FLAGS="--timestamp"
+
+      - name: Notarize and package app
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          APP_PATH=".build/${APP_NAME}.xcarchive/Products/Applications/${APP_NAME}.app"
+          NOTARY_ZIP=".build/${APP_NAME}-notary.zip"
+          FINAL_ZIP=".build/${APP_NAME}.zip"
+
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          ditto -c -k --keepParent "$APP_PATH" "$NOTARY_ZIP"
+          xcrun notarytool submit "$NOTARY_ZIP" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          xcrun stapler staple "$APP_PATH"
+          ditto -c -k --keepParent "$APP_PATH" "$FINAL_ZIP"
+
+      - name: Prepare Sparkle appcast
+        env:
+          VERSION: ${{ inputs.version }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          UPDATES_REPO_TOKEN: ${{ secrets.UPDATES_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          RELEASE_DIR=".build/sparkle-release"
+          TAG="v${VERSION}"
+          DOWNLOAD_PREFIX="https://github.com/${UPDATES_REPO}/releases/download/${TAG}"
+
+          git clone "https://x-access-token:${UPDATES_REPO_TOKEN}@github.com/${UPDATES_REPO}.git" "$RELEASE_DIR"
+          cd "$RELEASE_DIR"
+          git checkout gh-pages || git checkout --orphan gh-pages
+          cp "../${APP_NAME}.zip" "${APP_NAME}.zip"
+          printf "%s\n" "$RELEASE_NOTES" > "${APP_NAME}.md"
+          printf "%s" "$SPARKLE_PRIVATE_KEY" | "../SourcePackages/artifacts/sparkle/Sparkle/bin/generate_appcast" \
+            --ed-key-file - \
+            --download-url-prefix "$DOWNLOAD_PREFIX" \
+            --embed-release-notes \
+            .
+
+      - name: Publish GitHub release asset
+        env:
+          VERSION: ${{ inputs.version }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+          GH_TOKEN: ${{ secrets.UPDATES_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="v${VERSION}"
+          gh release create "$TAG" ".build/${APP_NAME}.zip" \
+            --repo "$UPDATES_REPO" \
+            --title "${APP_NAME} ${VERSION}" \
+            --notes "$RELEASE_NOTES"
+
+      - name: Publish appcast to GitHub Pages branch
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          cd ".build/sparkle-release"
+          rm -f "${APP_NAME}.zip" "${APP_NAME}.md"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add appcast.xml
+          git commit -m "Update appcast for ${APP_NAME} ${VERSION}"
+          git push origin gh-pages

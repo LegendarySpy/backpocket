@@ -25,3 +25,34 @@ Open `Backpocket.xcodeproj` in Xcode 26+ and run, or:
 which builds Release and installs to /Applications.
 
 Requires macOS 26 (Tahoe).
+
+## Updates
+
+Backpocket uses Sparkle for app updates. The app checks:
+
+```text
+https://legendaryspy.github.io/backpocket-updates/appcast.xml
+```
+
+Use a separate public `LegendarySpy/backpocket-updates` repository for update
+artifacts so this source repository can stay private. Configure GitHub Pages on
+that repository to publish from the `gh-pages` branch.
+
+The release workflow expects these source-repo secrets:
+
+- `MACOS_CERTIFICATE_BASE64`: Developer ID Application `.p12`, base64 encoded
+- `MACOS_CERTIFICATE_PASSWORD`: password for the `.p12`
+- `KEYCHAIN_PASSWORD`: temporary CI keychain password
+- `APPLE_ID`: Apple ID used for notarization
+- `APPLE_APP_SPECIFIC_PASSWORD`: app-specific password for notarization
+- `APPLE_TEAM_ID`: Apple developer team ID
+- `SPARKLE_PRIVATE_KEY`: exported Sparkle private key
+- `UPDATES_REPO_TOKEN`: token that can write to `LegendarySpy/backpocket-updates`
+
+Export the Sparkle private key for the GitHub secret with:
+
+```sh
+.build/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_keys -x sparkle_private_key.txt
+```
+
+Do not commit the exported private key.

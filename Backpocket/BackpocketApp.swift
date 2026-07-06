@@ -1,3 +1,4 @@
+import Sparkle
 import SwiftUI
 
 extension Notification.Name {
@@ -14,6 +15,7 @@ struct BackpocketApp: App {
             Divider()
             Button("Settings…") { AppDelegate.shared?.showSettings() }
                 .keyboardShortcut(",")
+            Button("Check for Updates…") { AppDelegate.shared?.checkForUpdates() }
             Divider()
             Button("Quit Backpocket") { NSApp.terminate(nil) }
         } label: {
@@ -47,6 +49,11 @@ private struct MenuBarLabel: View {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     static private(set) var shared: AppDelegate?
+    private let updaterController = SPUStandardUpdaterController(
+        startingUpdater: true,
+        updaterDelegate: nil,
+        userDriverDelegate: nil
+    )
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.shared = self
@@ -67,5 +74,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func showSettings() {
         NotificationCenter.default.post(name: .openSettingsWindow, object: nil)
+    }
+
+    func checkForUpdates() {
+        updaterController.checkForUpdates(nil)
     }
 }

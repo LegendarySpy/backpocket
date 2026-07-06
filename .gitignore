@@ -4,4 +4,5 @@ xcuserdata/
 *.xcuserstate
 .DS_Store
 *.af
+sparkle_private_key.txt
 Backpocket.app/

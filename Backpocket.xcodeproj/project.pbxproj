@@ -19,6 +19,7 @@
 		A2000000000000000000000A /* BPLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000A /* BPLog.swift */; };
 		A2000000000000000000000B /* Auth.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000B /* Auth.swift */; };
 		A2000000000000000000000D /* Placeholders.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000D /* Placeholders.swift */; };
+		A2000000000000000000000E /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000002 /* Sparkle */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -44,6 +45,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A2000000000000000000000E /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -103,6 +105,9 @@
 			dependencies = (
 			);
 			name = Backpocket;
+			packageProductDependencies = (
+				A90000000000000000000002 /* Sparkle */,
+			);
 			productName = Backpocket;
 			productReference = A10000000000000000000011 /* Backpocket.app */;
 			productType = "com.apple.product-type.application";
@@ -130,6 +135,9 @@
 				Base,
 			);
 			mainGroup = A30000000000000000000001;
+			packageReferences = (
+				A90000000000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */,
+			);
 			productRefGroup = A30000000000000000000003 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -230,7 +238,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.garongrevers.backpocket;
+				PRODUCT_BUNDLE_IDENTIFIER = com.backpocket.mac;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 			};
@@ -251,7 +259,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.garongrevers.backpocket;
+				PRODUCT_BUNDLE_IDENTIFIER = com.backpocket.mac;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 			};
@@ -279,6 +287,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A90000000000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.9.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A90000000000000000000002 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A90000000000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = A60000000000000000000001 /* Project object */;
 }

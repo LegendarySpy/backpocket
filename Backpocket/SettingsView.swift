@@ -304,8 +304,6 @@ private struct GeneralTab: View {
 }
 
 private struct AboutTab: View {
-    @State private var showingUpToDate = false
-
     private var version: String {
         let short = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
@@ -331,7 +329,7 @@ private struct AboutTab: View {
                 .foregroundStyle(.secondary)
 
             Button("Check for Updates…") {
-                showingUpToDate = true
+                AppDelegate.shared?.checkForUpdates()
             }
             .padding(.top, 8)
 
@@ -341,10 +339,5 @@ private struct AboutTab: View {
                 .padding(.top, 12)
         }
         .frame(width: 440, height: 360)
-        .alert("You're up to date", isPresented: $showingUpToDate) {
-            Button("OK") {}
-        } message: {
-            Text("Backpocket \(version) is the newest version.")
-        }
     }
 }
