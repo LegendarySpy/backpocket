@@ -3,4 +3,5 @@ DerivedData/
 xcuserdata/
 *.xcuserstate
 .DS_Store
+*.af
 Backpocket.app/
