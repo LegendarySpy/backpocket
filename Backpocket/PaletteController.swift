@@ -105,7 +105,13 @@ final class PaletteModel: ObservableObject {
 }
 
 final class PalettePanel: NSPanel {
+    var onCancel: (() -> Void)?
+
     override var canBecomeKey: Bool { true }
+
+    override func cancelOperation(_ sender: Any?) {
+        onCancel?()
+    }
 }
 
 final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
@@ -150,6 +156,7 @@ final class PaletteController: NSObject, NSWindowDelegate {
         panel.animationBehavior = .utilityWindow
         panel.delegate = self
         panel.contentView = PassThroughHostingView(rootView: PaletteView(model: model))
+        panel.onCancel = { [weak self] in self?.dismiss() }
 
         model.onCommit = { [weak self] fact, value in self?.insert(fact, typing: value) }
         model.onCommitRaw = { [weak self] text in self?.insertRaw(text) }
@@ -188,15 +195,7 @@ final class PaletteController: NSObject, NSWindowDelegate {
         position(at: anchor)
         panel.contentView?.layoutSubtreeIfNeeded()
         panel.makeKeyAndOrderFront(nil)
-        // SwiftUI's FocusState can fail inside a non-activating panel (seen in
-        // Electron-hosted apps); claim first responder at the AppKit level too.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) { [weak self] in
-            guard let self, self.panel.isVisible,
-                  let field = Self.firstTextField(in: self.panel.contentView) else { return }
-            if self.panel.firstResponder === self.panel {
-                self.panel.makeFirstResponder(field)
-            }
-        }
+        focusInputSoon()
     }
 
     /// `reactivate` hands focus back to the app the palette opened over. Skipped
@@ -283,6 +282,31 @@ final class PaletteController: NSObject, NSWindowDelegate {
             if let field = firstTextField(in: subview) { return field }
         }
         return nil
+    }
+
+    private func focusInputSoon() {
+        focusInput()
+        for delay in [0.03, 0.1] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.focusInput()
+            }
+        }
+    }
+
+    private func focusInput() {
+        guard panel.isVisible,
+              let field = Self.firstTextField(in: panel.contentView),
+              !Self.responder(panel.firstResponder, isEditing: field)
+        else { return }
+        panel.makeFirstResponder(field)
+    }
+
+    private static func responder(_ responder: NSResponder?, isEditing field: NSTextField) -> Bool {
+        guard let responder else { return false }
+        if responder === field { return true }
+        if responder === field.currentEditor() { return true }
+        guard let view = responder as? NSView else { return false }
+        return view == field || view.isDescendant(of: field)
     }
 
     private static func appIdentifier(for app: NSRunningApplication?) -> String? {
