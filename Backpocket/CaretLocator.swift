@@ -2,13 +2,13 @@ import AppKit
 import ApplicationServices
 
 struct PaletteAnchor {
-    let point: CGPoint      // top of the caret or text box, AppKit coordinates
-    let clearance: CGFloat  // vertical distance to skip when the palette flips below
+    let rect: NSRect        // caret, text box, or fallback point in AppKit coordinates
+    let alignmentX: CGFloat // x position the input pill should hug
 }
 
 enum CaretLocator {
-    /// Anchor for the palette. Order: caret bounds → mouse if it's inside a
-    /// large focused element → element's top-left → mouse.
+    /// Anchor for the palette. Order: caret bounds -> mouse if it's inside a
+    /// large focused element -> element's top-left -> mouse.
     static func anchor() -> PaletteAnchor {
         let mouse = NSEvent.mouseLocation
         BPLog.log("app=\(NSWorkspace.shared.frontmostApplication?.localizedName ?? "?") mouse=\(mouse)")
@@ -23,18 +23,18 @@ enum CaretLocator {
             BPLog.log("elementFrame ax=\(axFrame) converted=\(frame) onScreen=\(isOnScreen(frame))")
             if isOnScreen(frame) {
                 if frame.height > 200, frame.contains(mouse) {
-                    return PaletteAnchor(point: mouse, clearance: 24)
+                    return PaletteAnchor(rect: pointRect(mouse), alignmentX: mouse.x)
                 }
                 return PaletteAnchor(
-                    point: CGPoint(x: frame.minX + 16, y: frame.maxY),
-                    clearance: min(frame.height, 60) + 12
+                    rect: frame,
+                    alignmentX: frame.minX
                 )
             }
         } else {
             BPLog.log("elementFrame unavailable")
         }
         BPLog.log("fallback=mouse")
-        return PaletteAnchor(point: mouse, clearance: 24)
+        return PaletteAnchor(rect: pointRect(mouse), alignmentX: mouse.x)
     }
 
     private static func caretAnchor() -> PaletteAnchor? {
@@ -47,7 +47,7 @@ enum CaretLocator {
         let valid = isOnScreen(rect) && rect.height >= 4 && rect.height < 120 && rect.width < 200
         BPLog.log("caretRect ax=\(axRect) converted=\(rect) valid=\(valid)")
         guard valid else { return nil }
-        return PaletteAnchor(point: CGPoint(x: rect.minX, y: rect.maxY), clearance: rect.height + 12)
+        return PaletteAnchor(rect: rect, alignmentX: rect.minX)
     }
 
     private static func caretRect() -> CGRect? {
@@ -116,5 +116,9 @@ enum CaretLocator {
 
     private static func isOnScreen(_ rect: NSRect) -> Bool {
         NSScreen.screens.contains { $0.frame.intersects(rect) }
+    }
+
+    private static func pointRect(_ point: CGPoint) -> NSRect {
+        NSRect(x: point.x, y: point.y, width: 1, height: 1)
     }
 }

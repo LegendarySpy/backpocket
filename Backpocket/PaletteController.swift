@@ -123,6 +123,9 @@ final class PaletteController: NSObject, NSWindowDelegate {
     /// Fixed stage for the floating pills; empty regions are fully transparent,
     /// so the window itself never needs to resize.
     private let panelSize = NSSize(width: 308, height: 264)
+    private let contentPadding: CGFloat = 34
+    private let targetGap: CGFloat = 6
+    private let screenMargin: CGFloat = 8
 
     override init() {
         panel = PalettePanel(
@@ -228,21 +231,46 @@ final class PaletteController: NSObject, NSWindowDelegate {
     /// Pills hug the text box: input pill just above the anchor with results
     /// stacking upward, or flipped below it when there's no room.
     private func position(at anchor: PaletteAnchor) {
-        let screen = NSScreen.screens.first { $0.frame.contains(anchor.point) } ?? NSScreen.main
-        let visibleMaxY = screen?.visibleFrame.maxY ?? .infinity
-        let growsUp = anchor.point.y + 6 + panelSize.height <= visibleMaxY
+        let screen = screen(for: anchor.rect) ?? NSScreen.main
+        let visibleFrame = screen?.visibleFrame
+        let growsUp = shouldGrowUp(from: anchor.rect, in: visibleFrame)
         model.growsUp = growsUp
 
+        let inputTopOffset = panelSize.height - contentPadding
         var origin = CGPoint(
-            x: anchor.point.x - 38,
-            y: growsUp ? anchor.point.y - 20 : anchor.point.y - anchor.clearance - panelSize.height + 24
+            x: anchor.alignmentX - contentPadding,
+            y: growsUp
+                ? anchor.rect.maxY + targetGap - contentPadding
+                : anchor.rect.minY - targetGap - inputTopOffset
         )
-        if let visible = screen?.visibleFrame {
-            origin.x = min(max(visible.minX + 8, origin.x), visible.maxX - panelSize.width - 8)
-            origin.y = min(max(visible.minY + 8, origin.y), visible.maxY - panelSize.height - 8)
+        if let visible = visibleFrame {
+            origin.x = min(max(visible.minX + screenMargin, origin.x), visible.maxX - panelSize.width - screenMargin)
+            origin.y = min(max(visible.minY + screenMargin, origin.y), visible.maxY - panelSize.height - screenMargin)
         }
-        BPLog.log("anchor=\(anchor.point) clearance=\(anchor.clearance) panelOrigin=\(origin) growsUp=\(growsUp)")
+        BPLog.log("anchorRect=\(anchor.rect) alignX=\(anchor.alignmentX) panelOrigin=\(origin) growsUp=\(growsUp)")
         panel.setFrame(NSRect(origin: origin, size: panelSize), display: true)
+    }
+
+    private func shouldGrowUp(from rect: NSRect, in visibleFrame: NSRect?) -> Bool {
+        guard let visibleFrame else { return true }
+        let roomAbove = visibleFrame.maxY - rect.maxY
+        let roomBelow = rect.minY - visibleFrame.minY
+
+        if roomAbove >= panelSize.height + targetGap { return true }
+        if roomBelow >= panelSize.height + targetGap { return false }
+        return roomAbove >= roomBelow
+    }
+
+    private func screen(for rect: NSRect) -> NSScreen? {
+        let intersectingScreens = NSScreen.screens
+            .map { screen in (screen: screen, area: screen.frame.intersection(rect).area) }
+            .filter { $0.1 > 0 }
+        if let best = intersectingScreens.max(by: { $0.1 < $1.1 })?.screen {
+            return best
+        }
+
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        return NSScreen.screens.first { $0.frame.contains(center) }
     }
 
     private static func firstTextField(in view: NSView?) -> NSTextField? {
@@ -267,5 +295,11 @@ final class PaletteController: NSObject, NSWindowDelegate {
 
     func windowDidResignKey(_ notification: Notification) {
         dismiss(reactivate: false)
+    }
+}
+
+private extension NSRect {
+    var area: CGFloat {
+        isNull ? 0 : width * height
     }
 }
