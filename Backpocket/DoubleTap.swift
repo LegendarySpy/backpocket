@@ -10,6 +10,7 @@ final class DoubleTapMonitor {
     private var interrupted = false
     private var monitors: [Any?] = []
     private var action: (() -> Void)?
+    var onFirstTap: (() -> Void)?
 
     func start(action: @escaping () -> Void) {
         self.action = action
@@ -41,6 +42,7 @@ final class DoubleTapMonitor {
                 DispatchQueue.main.async { self.action?() }
             } else {
                 lastTap = now
+                DispatchQueue.main.async { self.onFirstTap?() }
             }
             interrupted = false
         } else if flags.isEmpty {

@@ -61,6 +61,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DoubleTapMonitor.shared.start {
             PaletteController.shared.toggle()
         }
+        DoubleTapMonitor.shared.onFirstTap = {
+            PaletteController.shared.prefetchAnchor()
+        }
+        // Its init registers the observer that warms Chromium accessibility trees.
+        _ = PaletteController.shared
         _ = FactStore.shared
 
         NSApp.servicesProvider = CaptureService()

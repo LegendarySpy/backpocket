@@ -23,14 +23,21 @@ final class PaletteModel: ObservableObject {
         refresh()
     }
 
+    /// False while the palette is populating so it opens settled; pills only
+    /// animate for changes the user causes.
+    var animateChanges = false
+
     func prepareForShow(appIdentifier: String?, appName: String?, fieldHint: String?) {
         self.appIdentifier = appIdentifier
         self.appName = appName
         self.fieldHint = fieldHint
+        animateChanges = false
         reset()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { self.animateChanges = true }
     }
 
     func prepareForDismiss() {
+        animateChanges = false
         query = ""
         selection = 0
         results = []
@@ -170,7 +177,7 @@ final class PaletteController: NSObject, NSWindowDelegate {
         panel.hidesOnDeactivate = false
         panel.isMovableByWindowBackground = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
-        panel.animationBehavior = .utilityWindow
+        panel.animationBehavior = .none
         panel.delegate = self
         panel.contentView = PassThroughHostingView(rootView: PaletteView(model: model))
         panel.onCancel = { [weak self] in self?.dismiss() }
@@ -186,6 +193,12 @@ final class PaletteController: NSObject, NSWindowDelegate {
         ) { [weak self] note in
             DispatchQueue.main.async { self?.handleAppSwitch(note) }
         }
+
+        // The app the user is already in never gets an activation event.
+        if let front = NSWorkspace.shared.frontmostApplication,
+           front.processIdentifier != ProcessInfo.processInfo.processIdentifier {
+            CaretLocator.warmUp(pid: front.processIdentifier)
+        }
     }
 
     private func handleAppSwitch(_ note: Notification) {
@@ -193,8 +206,9 @@ final class PaletteController: NSObject, NSWindowDelegate {
               app.processIdentifier != ProcessInfo.processInfo.processIdentifier
         else { return }
         CaretLocator.warmUp(pid: app.processIdentifier)
-        if panel.isVisible, app.processIdentifier != targetApp?.processIdentifier {
-            dismiss(reactivate: false)
+        if app.processIdentifier != targetApp?.processIdentifier {
+            showGeneration += 1 // a show still waiting on the old app's caret is moot
+            if panel.isVisible { dismiss(reactivate: false) }
         }
     }
 
@@ -207,15 +221,45 @@ final class PaletteController: NSObject, NSWindowDelegate {
         panel.isVisible ? dismiss() : show()
     }
 
+    /// Bumped when a pending show becomes irrelevant so its anchor resolution is dropped.
+    private var showGeneration = 0
+
+    private var prefetched: (anchor: PaletteAnchor, pid: pid_t?, at: TimeInterval)?
+
+    /// The first tap of a double-tap hides the Chromium wait behind the second tap.
+    func prefetchAnchor() {
+        guard !panel.isVisible else { return }
+        let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        CaretLocator.resolveAnchor(for: pid) { [weak self] anchor in
+            self?.prefetched = (anchor, pid, ProcessInfo.processInfo.systemUptime)
+        }
+    }
+
     func show() {
+        showGeneration += 1
+        let generation = showGeneration
         targetApp = NSWorkspace.shared.frontmostApplication
         let pid = targetApp?.processIdentifier
+        if let cached = prefetched, cached.anchor.fromCaret, cached.pid == pid,
+           ProcessInfo.processInfo.systemUptime - cached.at < 0.6 {
+            prefetched = nil
+            present(at: cached.anchor, pid: pid)
+            return
+        }
+        prefetched = nil
+        CaretLocator.resolveAnchor(for: pid) { [weak self] anchor in
+            guard let self, generation == showGeneration else { return }
+            present(at: anchor, pid: pid)
+        }
+    }
+
+    private func present(at anchor: PaletteAnchor, pid: pid_t?) {
+        // The field hint waits until now so a freshly nudged Chromium tree can answer.
         model.prepareForShow(
             appIdentifier: Self.appIdentifier(for: targetApp),
             appName: targetApp?.localizedName,
             fieldHint: CaretLocator.fieldHint(for: pid)
         )
-        let anchor = CaretLocator.anchor(for: pid)
         position(at: anchor)
         panel.contentView?.layoutSubtreeIfNeeded()
         panel.makeKeyAndOrderFront(nil)
@@ -223,20 +267,26 @@ final class PaletteController: NSObject, NSWindowDelegate {
         if !anchor.fromCaret { refinePositionSoon() }
     }
 
-    /// Chromium may expose caret geometry only a beat after the nudge; when the
-    /// first pass fell back, take one more look and slide onto the real caret.
-    private func refinePositionSoon() {
+    /// When the first pass fell back, keep glancing for the real caret and
+    /// slide onto it before the user starts typing.
+    private func refinePositionSoon(delays: [TimeInterval] = [0.2, 0.6]) {
+        guard let delay = delays.first else { return }
         let pid = targetApp?.processIdentifier
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self, panel.isVisible, model.query.isEmpty else { return }
             let anchor = CaretLocator.anchor(for: pid)
-            if anchor.fromCaret { position(at: anchor) }
+            if anchor.fromCaret {
+                position(at: anchor)
+            } else {
+                refinePositionSoon(delays: Array(delays.dropFirst()))
+            }
         }
     }
 
     /// `reactivate` hands focus back to the app the palette opened over. Skipped
     /// when dismissal came from the user clicking into something else.
     func dismiss(reactivate: Bool = true) {
+        showGeneration += 1
         panel.orderOut(nil)
         model.prepareForDismiss()
         if reactivate { targetApp?.activate() }

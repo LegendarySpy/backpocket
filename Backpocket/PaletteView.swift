@@ -6,13 +6,16 @@ struct PaletteView: View {
     @FocusState private var focused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            if model.growsUp {
-                rowPills
-                inputPill
-            } else {
-                inputPill
-                rowPills
+        // One container so the pills adapt light/dark as a group, not per-backdrop.
+        GlassEffectContainer(spacing: 2) {
+            VStack(alignment: .leading, spacing: 5) {
+                if model.growsUp {
+                    rowPills
+                    inputPill
+                } else {
+                    inputPill
+                    rowPills
+                }
             }
         }
         .padding(34)
@@ -20,8 +23,8 @@ struct PaletteView: View {
             maxWidth: .infinity, maxHeight: .infinity,
             alignment: model.growsUp ? .bottomLeading : .topLeading
         )
-        .animation(.smooth(duration: 0.18), value: model.results)
-        .animation(.smooth(duration: 0.15), value: model.selection)
+        .animation(model.animateChanges ? .smooth(duration: 0.18) : nil, value: model.results)
+        .animation(model.animateChanges ? .smooth(duration: 0.15) : nil, value: model.selection)
         .onAppear {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { focused = true }
         }

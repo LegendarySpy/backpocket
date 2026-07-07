@@ -12,14 +12,50 @@ enum CaretLocator {
     /// stays valid even once the palette itself holds system focus.
     /// Order: caret bounds -> focused element's frame -> mouse.
     static func anchor(for pid: pid_t?) -> PaletteAnchor {
-        let mouse = NSEvent.mouseLocation
-        BPLog.log("app=\(NSWorkspace.shared.frontmostApplication?.localizedName ?? "?") mouse=\(mouse)")
-
         if let caret = caretAnchor(pid: pid) { return caret }
-
         nudgeChromium(pid: pid)
         if let caret = caretAnchor(pid: pid) { return caret }
+        return fallbackAnchor(pid: pid)
+    }
 
+    /// Like `anchor(for:)`, but with a short grace period: Chromium builds its
+    /// accessibility tree asynchronously after the nudge, and waiting a few
+    /// beats for the caret beats showing the palette somewhere it doesn't belong.
+    @MainActor
+    static func resolveAnchor(for pid: pid_t?, completion: @escaping @MainActor (PaletteAnchor) -> Void) {
+        BPLog.log("app=\(NSWorkspace.shared.frontmostApplication?.localizedName ?? "?") mouse=\(NSEvent.mouseLocation)")
+        if let caret = caretAnchor(pid: pid) {
+            completion(caret)
+            return
+        }
+        nudgeChromium(pid: pid)
+        pollForCaret(pid: pid, attempt: 1, completion: completion)
+    }
+
+    private static let pollAttempts = 5
+    private static let pollInterval: TimeInterval = 0.05
+
+    @MainActor
+    private static func pollForCaret(
+        pid: pid_t?, attempt: Int, completion: @escaping @MainActor (PaletteAnchor) -> Void
+    ) {
+        if let caret = caretAnchor(pid: pid) {
+            BPLog.log("caret appeared on poll \(attempt)")
+            completion(caret)
+            return
+        }
+        guard attempt < pollAttempts else {
+            BPLog.log("no caret after \(attempt) polls; falling back")
+            completion(fallbackAnchor(pid: pid))
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + pollInterval) {
+            pollForCaret(pid: pid, attempt: attempt + 1, completion: completion)
+        }
+    }
+
+    private static func fallbackAnchor(pid: pid_t?) -> PaletteAnchor {
+        let mouse = NSEvent.mouseLocation
         if let element = focusedElement(pid: pid),
            let frame = elementFrame(of: element).map(convert) {
             BPLog.log("elementFrame converted=\(frame) onScreen=\(isOnScreen(frame))")
@@ -38,14 +74,14 @@ enum CaretLocator {
         return PaletteAnchor(rect: pointRect(mouse), alignmentX: mouse.x, fromCaret: false)
     }
 
-    /// Chromium builds its accessibility tree lazily, so caret geometry misses on
-    /// the first ask. Warming the app when it activates means the tree is ready
-    /// by the time the palette opens. AXManualAccessibility is Chromium-specific
-    /// and inert everywhere else.
+    /// Warming an app when it activates means its lazy Chromium accessibility
+    /// tree is ready by the time the palette opens. AXEnhancedUserInterface is
+    /// the flag Chrome honors, AXManualAccessibility the Electron one; both are
+    /// inert everywhere else.
     static func warmUp(pid: pid_t) {
-        AXUIElementSetAttributeValue(
-            AXUIElementCreateApplication(pid), "AXManualAccessibility" as CFString, kCFBooleanTrue
-        )
+        let app = AXUIElementCreateApplication(pid)
+        AXUIElementSetAttributeValue(app, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+        AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
     }
 
     /// Words the focused field uses to describe itself (placeholder, title,
@@ -107,6 +143,10 @@ enum CaretLocator {
     }
 
     private static func caretRect(of element: AXUIElement) -> CGRect? {
+        rangeCaretRect(of: element) ?? markerCaretRect(of: element)
+    }
+
+    private static func rangeCaretRect(of element: AXUIElement) -> CGRect? {
         var rangeRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &rangeRef) == .success,
               let rangeValue = rangeRef, CFGetTypeID(rangeValue) == AXValueGetTypeID() else { return nil }
@@ -133,6 +173,24 @@ enum CaretLocator {
             return rect
         }
         return nil
+    }
+
+    /// Rich web editors sometimes answer WebKit-style text markers when
+    /// integer-range bounds come back empty.
+    private static func markerCaretRect(of element: AXUIElement) -> CGRect? {
+        var markerRangeRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            element, "AXSelectedTextMarkerRange" as CFString, &markerRangeRef
+        ) == .success, let markerRange = markerRangeRef else { return nil }
+        var boundsRef: CFTypeRef?
+        guard AXUIElementCopyParameterizedAttributeValue(
+            element, "AXBoundsForTextMarkerRange" as CFString, markerRange, &boundsRef
+        ) == .success, let boundsValue = boundsRef, CFGetTypeID(boundsValue) == AXValueGetTypeID() else { return nil }
+        var rect = CGRect.zero
+        guard AXValueGetValue((boundsValue as! AXValue), .cgRect, &rect),
+              rect.origin != .zero, rect.height > 0 else { return nil }
+        BPLog.log("markerCaretRect=\(rect)")
+        return rect
     }
 
     private static func elementFrame(of element: AXUIElement) -> CGRect? {
@@ -175,9 +233,7 @@ enum CaretLocator {
     /// Chromium/Electron apps expose caret geometry only after being asked nicely.
     private static func nudgeChromium(pid: pid_t?) {
         guard let pid = pid ?? NSWorkspace.shared.frontmostApplication?.processIdentifier else { return }
-        let app = AXUIElementCreateApplication(pid)
-        AXUIElementSetAttributeValue(app, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
-        AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+        warmUp(pid: pid)
     }
 
     /// AX rects have a top-left origin on the primary display; AppKit's origin is bottom-left.
