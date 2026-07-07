@@ -91,7 +91,7 @@ final class FactStore: ObservableObject {
         let loadedFromDisk: Bool
         if let data = try? Data(contentsOf: fileURL),
            let saved = try? JSONDecoder().decode([Fact].self, from: data) {
-            facts = saved
+            facts = Self.migratingLegacyAddMarker(saved)
             loadedFromDisk = true
         } else {
             facts = [Fact(name: "Email", value: "you@example.com")]
@@ -102,6 +102,16 @@ final class FactStore: ObservableObject {
             startICloudSync(loadedFromDisk: loadedFromDisk)
         } else {
             iCloudStatus = "Off"
+        }
+    }
+
+    /// Values written by older versions marked the add-text landing spot with a
+    /// bespoke [[+]] marker; it now shares the placeholder syntax as {+}.
+    private static func migratingLegacyAddMarker(_ facts: [Fact]) -> [Fact] {
+        facts.map { fact in
+            var fact = fact
+            fact.value = fact.value.replacingOccurrences(of: "[[+]]", with: PlaceholderResolver.addTextToken)
+            return fact
         }
     }
 
@@ -279,7 +289,7 @@ final class FactStore: ObservableObject {
 
     private func applyRemotePayload(_ payload: SyncedFacts) {
         isApplyingRemoteChange = true
-        facts = payload.facts
+        facts = Self.migratingLegacyAddMarker(payload.facts)
         isApplyingRemoteChange = false
 
         localRevision = payload.revision

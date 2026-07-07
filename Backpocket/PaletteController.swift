@@ -17,8 +17,6 @@ final class PaletteModel: ObservableObject {
     var onCommitRaw: ((String) -> Void)?
     var onDismiss: (() -> Void)?
 
-    static let addMarker = "[[+]]"
-
     func reset() {
         query = ""
         selection = 0
@@ -50,30 +48,31 @@ final class PaletteModel: ObservableObject {
         selection = 0
     }
 
-    /// "name+text" splits into the fuzzy query and the add-text.
+    /// "name+text" splits into the fuzzy query and the add-text. A leading "+"
+    /// is part of the search ("+31" finds a phone number), not an add-text.
     private var parsed: (base: String, tag: String?) {
-        guard let plus = query.firstIndex(of: "+") else { return (query, nil) }
+        guard let plus = query.dropFirst().firstIndex(of: "+") else { return (query, nil) }
         let tag = String(query[query.index(after: plus)...])
         return (String(query[..<plus]), tag.isEmpty ? nil : tag)
     }
 
     var activeTag: String? { parsed.tag }
 
-    /// Where the add-text lands: an explicit [[+]] marker wins, then before the
-    /// @ of an email as "+text", then appended. No add-text strips the marker.
+    /// Where the add-text lands: an explicit {+} in the value wins, then before
+    /// the @ of an email as "+text", then appended.
     func resolvedValue(for fact: Fact) -> String {
         let tag = parsed.tag
         var value = fact.value
-        if value.contains(Self.addMarker) {
-            value = value.replacingOccurrences(of: Self.addMarker, with: tag ?? "")
-        } else if let tag {
+        if let tag, !value.contains(PlaceholderResolver.addTextToken) {
             if let at = value.firstIndex(of: "@"), value.contains(".") {
                 value.insert(contentsOf: "+\(tag)", at: at)
             } else {
                 value += tag
             }
         }
-        return PlaceholderResolver.resolve(value, context: placeholderContext)
+        var context = placeholderContext
+        context.addText = tag
+        return PlaceholderResolver.resolve(value, context: context)
     }
 
     var placeholderContext: PlaceholderResolver.Context {

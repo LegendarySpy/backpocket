@@ -214,23 +214,39 @@ private struct PlaceholderHelpView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Placeholders")
                 .font(.system(size: 13, weight: .semibold))
-            ForEach(examples, id: \.0) { token, description in
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text(token)
-                        .font(.system(size: 12, design: .monospaced))
-                        .frame(width: 128, alignment: .leading)
-                    Text(description)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Text("[[+]] still controls where name+text lands.")
+            Text("Use these in a value; they resolve when inserted.")
                 .font(.system(size: 11))
-                .foregroundStyle(.tertiary)
-                .padding(.top, 2)
+                .foregroundStyle(.secondary)
+            ForEach(examples, id: \.0) { token, description in
+                exampleRow(token, description)
+            }
+
+            Divider()
+                .padding(.vertical, 4)
+
+            Text("Add text")
+                .font(.system(size: 13, weight: .semibold))
+            Text("In the palette, + after a search adds text on the way in.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            exampleRow("email+work", "types you+work@example.com")
+            Text("It lands at {+} if the value has one, before an email's @, or at the end.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
         }
         .padding(14)
         .frame(width: 310, alignment: .leading)
+    }
+
+    private func exampleRow(_ token: String, _ description: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(token)
+                .font(.system(size: 12, design: .monospaced))
+                .frame(width: 128, alignment: .leading)
+            Text(description)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+        }
     }
 }
 

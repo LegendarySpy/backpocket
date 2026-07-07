@@ -4,7 +4,11 @@ import Foundation
 enum PlaceholderResolver {
     struct Context {
         var appName: String?
+        var addText: String?
     }
+
+    /// Marks where the palette's add-text ("email+work") lands inside a value.
+    static let addTextToken = "{+}"
 
     static let builtInFacts = [
         Fact(id: UUID(uuidString: "00000000-0000-0000-0000-000000000101")!, name: "Date", value: "{date}"),
@@ -65,6 +69,8 @@ enum PlaceholderResolver {
         let argument = parts.count > 1 ? String(parts[1]) : nil
 
         switch name {
+        case "+":
+            return context.addText ?? ""
         case "date":
             return format(resolveDate(now, argument: argument), defaultFormat: "yyyy-MM-dd", customFormat: formatArgument(argument))
         case "shortdate":
