@@ -46,6 +46,16 @@ enum Fuzzy {
                     matchedIndices: result.indices
                 )
             }
+            // The query can also hit inside the value ("denver" finds the
+            // address fact), weighted below name matches. Sensitive values
+            // stay unsearchable so ranking can't confirm their contents.
+            if !fact.isSensitive, let result = match(query: trimmed, candidate: fact.value), result.score > 0 {
+                return FuzzyResult(
+                    fact: fact,
+                    score: result.score * 8 + contextScore(fact),
+                    matchedIndices: []
+                )
+            }
             return nil
         }
         let ranked = matches.sorted { a, b in
