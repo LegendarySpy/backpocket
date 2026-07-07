@@ -230,7 +230,7 @@ private struct PlaceholderHelpView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
             exampleRow("email+work", "types you+work@example.com")
-            Text("It lands at {+} if the value has one, before an email's @, or at the end.")
+            Text("It lands at {} if the value has one, before an email's @, or at the end.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
         }

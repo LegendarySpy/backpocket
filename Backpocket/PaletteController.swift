@@ -65,12 +65,12 @@ final class PaletteModel: ObservableObject {
 
     var activeTag: String? { parsed.tag }
 
-    /// Where the add-text lands: an explicit {+} in the value wins, then before
-    /// the @ of an email as "+text", then appended.
+    /// Where the add-text lands: an explicit {} (or {+}) in the value wins,
+    /// then before the @ of an email as "+text", then appended.
     func resolvedValue(for fact: Fact) -> String {
         let tag = parsed.tag
         var value = fact.value
-        if let tag, !value.contains(PlaceholderResolver.addTextToken) {
+        if let tag, !PlaceholderResolver.hasAddTextMarker(value) {
             if let at = value.firstIndex(of: "@"), value.contains(".") {
                 value.insert(contentsOf: "+\(tag)", at: at)
             } else {
