@@ -116,11 +116,18 @@ final class PaletteModel: ObservableObject {
 
 final class PalettePanel: NSPanel {
     var onCancel: (() -> Void)?
+    var onOrphanKeyDown: ((NSEvent) -> Void)?
 
     override var canBecomeKey: Bool { true }
 
     override func cancelOperation(_ sender: Any?) {
         onCancel?()
+    }
+
+    /// A keystroke that falls through the whole responder chain means the input
+    /// field wasn't focused. Recover it instead of letting AppKit beep.
+    override func keyDown(with event: NSEvent) {
+        onOrphanKeyDown?(event)
     }
 }
 
@@ -143,7 +150,6 @@ final class PaletteController: NSObject, NSWindowDelegate {
     /// so the window itself never needs to resize.
     private let panelSize = NSSize(width: 308, height: 264)
     private let contentPadding: CGFloat = 34
-    private let targetGap: CGFloat = 6
     private let screenMargin: CGFloat = 8
 
     override init() {
@@ -167,6 +173,7 @@ final class PaletteController: NSObject, NSWindowDelegate {
         panel.delegate = self
         panel.contentView = PassThroughHostingView(rootView: PaletteView(model: model))
         panel.onCancel = { [weak self] in self?.dismiss() }
+        panel.onOrphanKeyDown = { [weak self] event in self?.rescueOrphanKey(event) }
 
         model.onCommit = { [weak self] fact, value in self?.insert(fact, typing: value) }
         model.onCommitRaw = { [weak self] text in self?.insertRaw(text) }
@@ -181,12 +188,13 @@ final class PaletteController: NSObject, NSWindowDelegate {
     }
 
     private func handleAppSwitch(_ note: Notification) {
-        guard panel.isVisible,
-              let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-              app.processIdentifier != targetApp?.processIdentifier,
+        guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
               app.processIdentifier != ProcessInfo.processInfo.processIdentifier
         else { return }
-        dismiss(reactivate: false)
+        CaretLocator.warmUp(pid: app.processIdentifier)
+        if panel.isVisible, app.processIdentifier != targetApp?.processIdentifier {
+            dismiss(reactivate: false)
+        }
     }
 
     private var lastToggle: TimeInterval = 0
@@ -201,11 +209,23 @@ final class PaletteController: NSObject, NSWindowDelegate {
     func show() {
         targetApp = NSWorkspace.shared.frontmostApplication
         model.prepareForShow(appIdentifier: Self.appIdentifier(for: targetApp), appName: targetApp?.localizedName)
-        let anchor = CaretLocator.anchor()
+        let anchor = CaretLocator.anchor(for: targetApp?.processIdentifier)
         position(at: anchor)
         panel.contentView?.layoutSubtreeIfNeeded()
         panel.makeKeyAndOrderFront(nil)
         focusInputSoon()
+        if !anchor.fromCaret { refinePositionSoon() }
+    }
+
+    /// Chromium may expose caret geometry only a beat after the nudge; when the
+    /// first pass fell back, take one more look and slide onto the real caret.
+    private func refinePositionSoon() {
+        let pid = targetApp?.processIdentifier
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            guard let self, panel.isVisible, model.query.isEmpty else { return }
+            let anchor = CaretLocator.anchor(for: pid)
+            if anchor.fromCaret { position(at: anchor) }
+        }
     }
 
     /// `reactivate` hands focus back to the app the palette opened over. Skipped
@@ -245,15 +265,17 @@ final class PaletteController: NSObject, NSWindowDelegate {
     private func position(at anchor: PaletteAnchor) {
         let screen = screen(for: anchor.rect) ?? NSScreen.main
         let visibleFrame = screen?.visibleFrame
-        let growsUp = shouldGrowUp(from: anchor.rect, in: visibleFrame)
+        // Taller anchors (whole text boxes) get more breathing room than a bare caret.
+        let gap = min(max(6, anchor.rect.height * 0.25), 14)
+        let growsUp = shouldGrowUp(from: anchor.rect, gap: gap, in: visibleFrame)
         model.growsUp = growsUp
 
         let inputTopOffset = panelSize.height - contentPadding
         var origin = CGPoint(
             x: anchor.alignmentX - contentPadding,
             y: growsUp
-                ? anchor.rect.maxY + targetGap - contentPadding
-                : anchor.rect.minY - targetGap - inputTopOffset
+                ? anchor.rect.maxY + gap - contentPadding
+                : anchor.rect.minY - gap - inputTopOffset
         )
         if let visible = visibleFrame {
             origin.x = min(max(visible.minX + screenMargin, origin.x), visible.maxX - panelSize.width - screenMargin)
@@ -263,13 +285,13 @@ final class PaletteController: NSObject, NSWindowDelegate {
         panel.setFrame(NSRect(origin: origin, size: panelSize), display: true)
     }
 
-    private func shouldGrowUp(from rect: NSRect, in visibleFrame: NSRect?) -> Bool {
+    private func shouldGrowUp(from rect: NSRect, gap: CGFloat, in visibleFrame: NSRect?) -> Bool {
         guard let visibleFrame else { return true }
         let roomAbove = visibleFrame.maxY - rect.maxY
         let roomBelow = rect.minY - visibleFrame.minY
 
-        if roomAbove >= panelSize.height + targetGap { return true }
-        if roomBelow >= panelSize.height + targetGap { return false }
+        if roomAbove >= panelSize.height + gap { return true }
+        if roomBelow >= panelSize.height + gap { return false }
         return roomAbove >= roomBelow
     }
 
@@ -311,6 +333,16 @@ final class PaletteController: NSObject, NSWindowDelegate {
         panel.makeFirstResponder(field)
     }
 
+    /// The panel is key but the input field wasn't focused when a key arrived.
+    /// Refocus and replay the keystroke so it lands instead of beeping.
+    private func rescueOrphanKey(_ event: NSEvent) {
+        BPLog.log("orphan keyDown; refocusing input")
+        focusInput()
+        guard let field = Self.firstTextField(in: panel.contentView),
+              let editor = field.currentEditor() else { return }
+        editor.keyDown(with: event)
+    }
+
     private static func responder(_ responder: NSResponder?, isEditing field: NSTextField) -> Bool {
         guard let responder else { return false }
         if responder === field { return true }
@@ -328,6 +360,10 @@ final class PaletteController: NSObject, NSWindowDelegate {
             return "name:\(localizedName)"
         }
         return nil
+    }
+
+    func windowDidBecomeKey(_ notification: Notification) {
+        focusInput()
     }
 
     func windowDidResignKey(_ notification: Notification) {
