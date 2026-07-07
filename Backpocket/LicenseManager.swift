@@ -52,10 +52,9 @@ final class LicenseManager: ObservableObject {
     private let client: PolarLicenseClient
     private var keychain: LicenseKeychain
     private let defaults = UserDefaults.standard
-    private let offlineGrace: TimeInterval = 7 * 24 * 60 * 60
 
     private static let snapshotKey = "polarLicenseSnapshot"
-    private static let deviceIDKey = "polarLicenseDeviceID"
+    private static let offlineGrace: TimeInterval = 7 * 24 * 60 * 60
 
     init(
         client: PolarLicenseClient = PolarLicenseClient(),
@@ -169,6 +168,14 @@ final class LicenseManager: ObservableObject {
         Self.loadSnapshot(from: defaults)
     }
 
+    var checkoutURL: URL? {
+        client.checkoutURL
+    }
+
+    var portalURL: URL? {
+        client.portalURL
+    }
+
     private var activationLabel: String {
         Host.current().localizedName ?? "Mac"
     }
@@ -176,18 +183,9 @@ final class LicenseManager: ObservableObject {
     private var activationMeta: [String: String] {
         [
             "bundle_id": Bundle.main.bundleIdentifier ?? "com.backpocket.mac",
-            "device_id": deviceID,
+            "device_id": DeviceIdentifier.current,
             "app_version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
         ]
-    }
-
-    private var deviceID: String {
-        if let existing = defaults.string(forKey: Self.deviceIDKey) {
-            return existing
-        }
-        let id = UUID().uuidString
-        defaults.set(id, forKey: Self.deviceIDKey)
-        return id
     }
 
     private func applyActivatedLicense(_ activation: PolarActivationResponse) {
@@ -216,7 +214,7 @@ final class LicenseManager: ObservableObject {
     }
 
     private func applyValidationFailure(_ error: Error) {
-        if let snapshot = currentSnapshot, snapshot.isUsable, Self.snapshotIsFresh(snapshot, grace: offlineGrace) {
+        if let snapshot = currentSnapshot, snapshot.isUsable, Self.snapshotIsFresh(snapshot) {
             state = .active(snapshot)
             BPLog.log("Polar validation failed; using cached license: \(error.localizedDescription)")
             return
@@ -244,8 +242,8 @@ final class LicenseManager: ObservableObject {
         return try? JSONDecoder.license.decode(LicenseSnapshot.self, from: data)
     }
 
-    private static func snapshotIsFresh(_ snapshot: LicenseSnapshot, grace: TimeInterval = 7 * 24 * 60 * 60) -> Bool {
-        Date().timeIntervalSince(snapshot.lastValidatedAt) < grace
+    private static func snapshotIsFresh(_ snapshot: LicenseSnapshot) -> Bool {
+        Date().timeIntervalSince(snapshot.lastValidatedAt) < offlineGrace
     }
 
     private static func inactiveReason(for snapshot: LicenseSnapshot) -> String {
@@ -371,26 +369,11 @@ struct PolarLicenseResponse: Decodable {
     var requiresActivation: Bool {
         limitActivations != nil
     }
-
-    enum CodingKeys: String, CodingKey {
-        case key
-        case displayKey = "display_key"
-        case status
-        case limitActivations = "limit_activations"
-        case customer
-        case expiresAt = "expires_at"
-        case activation
-    }
 }
 
 struct PolarActivationResponse: Decodable {
     var id: String
     var licenseKey: PolarActivatedLicense
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case licenseKey = "license_key"
-    }
 }
 
 struct PolarActivatedLicense: Decodable {
@@ -399,14 +382,6 @@ struct PolarActivatedLicense: Decodable {
     var status: String?
     var customer: PolarCustomer?
     var expiresAt: Date?
-
-    enum CodingKeys: String, CodingKey {
-        case key
-        case displayKey = "display_key"
-        case status
-        case customer
-        case expiresAt = "expires_at"
-    }
 }
 
 struct PolarActivationBase: Decodable {
@@ -455,7 +430,7 @@ private extension Error {
 }
 
 private extension JSONDecoder {
-    static var license: JSONDecoder {
+    static let license: JSONDecoder = {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { decoder in
             let container = try decoder.singleValueContainer()
@@ -466,17 +441,17 @@ private extension JSONDecoder {
             }
             throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid date \(value)")
         }
-        decoder.keyDecodingStrategy = .useDefaultKeys
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
         return decoder
-    }
+    }()
 }
 
 private extension JSONEncoder {
-    static var license: JSONEncoder {
+    static let license: JSONEncoder = {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         return encoder
-    }
+    }()
 }
 
 private extension ISO8601DateFormatter {

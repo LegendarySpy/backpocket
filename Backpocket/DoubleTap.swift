@@ -2,8 +2,8 @@ import AppKit
 
 /// Fires on a quick double-tap of the chosen modifier key alone. Only key *timing*
 /// is observed to cancel pending taps; characters are never read.
-final class OptionDoubleTap {
-    static let shared = OptionDoubleTap()
+final class DoubleTapMonitor {
+    static let shared = DoubleTapMonitor()
 
     private var lastTap: TimeInterval = 0
     private var optionWasDown = false
@@ -23,12 +23,8 @@ final class OptionDoubleTap {
     }
 
     private var triggerFlag: NSEvent.ModifierFlags {
-        switch UserDefaults.standard.string(forKey: "trigger") {
-        case "control": .control
-        case "command": .command
-        case "shift": .shift
-        default: .option
-        }
+        let saved = UserDefaults.standard.string(forKey: TriggerModifier.defaultsKey) ?? ""
+        return (TriggerModifier(rawValue: saved) ?? .option).flags
     }
 
     private func handle(_ event: NSEvent) {

@@ -42,7 +42,6 @@ struct PaletteView: View {
                 .textFieldStyle(.plain)
                 .font(.system(size: 12, weight: .medium))
                 .focused($focused)
-                .onSubmit { model.commit() }
                 .onKeyPress(.return) { model.commit(); return .handled }
                 .onKeyPress(.upArrow) { model.adjustSelection(by: model.growsUp ? 1 : -1); return .handled }
                 .onKeyPress(.downArrow) { model.adjustSelection(by: model.growsUp ? -1 : 1); return .handled }

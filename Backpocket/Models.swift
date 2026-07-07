@@ -45,6 +45,20 @@ struct FactUsage: Codable, Equatable {
     var lastUsed: Date
 }
 
+/// One stable per-install ID, shared by iCloud sync payloads and license activation metadata.
+enum DeviceIdentifier {
+    private static let key = "deviceID"
+
+    static var current: String {
+        if let saved = UserDefaults.standard.string(forKey: key) {
+            return saved
+        }
+        let id = UUID().uuidString
+        UserDefaults.standard.set(id, forKey: key)
+        return id
+    }
+}
+
 @MainActor
 final class FactStore: ObservableObject {
     static let shared = FactStore()
@@ -65,7 +79,6 @@ final class FactStore: ObservableObject {
     private static let cloudPayloadKey = "factsPayload"
     private static let iCloudSyncEnabledKey = "iCloudSyncEnabled"
     private static let localRevisionKey = "factsRevision"
-    private static let deviceIDKey = "deviceID"
 
     init() {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -264,7 +277,7 @@ final class FactStore: ObservableObject {
             UserDefaults.standard.set(localRevision.timeIntervalSince1970, forKey: Self.localRevisionKey)
         }
 
-        let payload = SyncedFacts(facts: facts, revision: localRevision, deviceID: deviceID)
+        let payload = SyncedFacts(facts: facts, revision: localRevision, deviceID: DeviceIdentifier.current)
         guard let data = try? JSONEncoder().encode(payload) else {
             iCloudStatus = "Could not sync"
             return
@@ -273,16 +286,6 @@ final class FactStore: ObservableObject {
         cloudStore.set(data, forKey: Self.cloudPayloadKey)
         cloudStore.synchronize()
         iCloudStatus = "On"
-    }
-
-    private var deviceID: String {
-        if let saved = UserDefaults.standard.string(forKey: Self.deviceIDKey) {
-            return saved
-        }
-
-        let id = UUID().uuidString
-        UserDefaults.standard.set(id, forKey: Self.deviceIDKey)
-        return id
     }
 }
 

@@ -4,7 +4,7 @@ import SwiftUI
 @MainActor
 final class PaletteModel: ObservableObject {
     @Published var query = "" {
-        didSet { refresh() }
+        didSet { if query != oldValue { refresh() } }
     }
     @Published var results: [FuzzyResult] = []
     @Published var selection = 0

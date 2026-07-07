@@ -3,7 +3,19 @@ import SwiftUI
 
 enum TriggerModifier: String, CaseIterable, Identifiable {
     case option, control, command, shift
+
+    static let defaultsKey = "trigger"
+
     var id: String { rawValue }
+
+    var flags: NSEvent.ModifierFlags {
+        switch self {
+        case .option: .option
+        case .control: .control
+        case .command: .command
+        case .shift: .shift
+        }
+    }
 
     var symbol: String {
         switch self {
@@ -29,11 +41,11 @@ final class AppSettings: ObservableObject {
     static let shared = AppSettings()
 
     @Published var trigger: TriggerModifier {
-        didSet { UserDefaults.standard.set(trigger.rawValue, forKey: "trigger") }
+        didSet { UserDefaults.standard.set(trigger.rawValue, forKey: TriggerModifier.defaultsKey) }
     }
 
     init() {
-        trigger = TriggerModifier(rawValue: UserDefaults.standard.string(forKey: "trigger") ?? "") ?? .option
+        trigger = TriggerModifier(rawValue: UserDefaults.standard.string(forKey: TriggerModifier.defaultsKey) ?? "") ?? .option
     }
 }
 
@@ -71,16 +83,13 @@ private struct FactsTab: View {
         VStack(spacing: 0) {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 6) {
-                    ForEach(store.facts.indices, id: \.self) { index in
+                    ForEach($store.facts) { $fact in
                         FactRow(
-                            fact: $store.facts[index],
+                            fact: $fact,
                             focus: $focusedFact,
-                            isPlanLocked: isPlanLocked(index)
+                            isPlanLocked: isPlanLocked(fact)
                         ) {
-                            let id = store.facts[index].id
-                            DispatchQueue.main.async {
-                                withAnimation { store.remove(id) }
-                            }
+                            withAnimation { store.remove(fact.id) }
                         }
                     }
                 }
@@ -103,7 +112,7 @@ private struct FactsTab: View {
                         .font(.system(size: 11.5))
                         .foregroundStyle(.secondary)
 
-                    if let checkoutURL = PolarLicenseClient().checkoutURL {
+                    if let checkoutURL = license.checkoutURL {
                         Button("Unlock") {
                             NSWorkspace.shared.open(checkoutURL)
                         }
@@ -128,8 +137,11 @@ private struct FactsTab: View {
         .frame(width: 440, height: 360)
     }
 
-    private func isPlanLocked(_ index: Int) -> Bool {
-        !license.state.isLicensed && index >= LicenseManager.freeFactLimit
+    private func isPlanLocked(_ fact: Fact) -> Bool {
+        guard !license.state.isLicensed,
+              let index = store.facts.firstIndex(where: { $0.id == fact.id })
+        else { return false }
+        return index >= LicenseManager.freeFactLimit
     }
 }
 
@@ -352,11 +364,11 @@ private struct AboutTab: View {
     }
 
     private var checkoutURL: URL? {
-        PolarLicenseClient().checkoutURL
+        license.checkoutURL
     }
 
     private var portalURL: URL? {
-        PolarLicenseClient().portalURL
+        license.portalURL
     }
 
     var body: some View {

@@ -58,7 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.shared = self
 
-        OptionDoubleTap.shared.start {
+        DoubleTapMonitor.shared.start {
             PaletteController.shared.toggle()
         }
         _ = FactStore.shared

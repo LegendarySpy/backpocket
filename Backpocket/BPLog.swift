@@ -1,18 +1,15 @@
 import Foundation
+import os
 
-/// Geometry debug log (~/Library/Logs/Backpocket.log). Never logs fact values.
+/// Geometry debug log. Never logs fact values.
+/// View with Console.app or: log show --predicate 'subsystem == "com.backpocket.mac"'
 enum BPLog {
-    private static let url = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
-        .appendingPathComponent("Logs/Backpocket.log")
+    private static let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "com.backpocket.mac",
+        category: "geometry"
+    )
 
     static func log(_ message: String) {
-        let line = "\(Date().formatted(date: .omitted, time: .standard)) \(message)\n"
-        if let handle = try? FileHandle(forWritingTo: url) {
-            handle.seekToEndOfFile()
-            handle.write(line.data(using: .utf8)!)
-            try? handle.close()
-        } else {
-            try? line.data(using: .utf8)!.write(to: url)
-        }
+        logger.log("\(message, privacy: .public)")
     }
 }
