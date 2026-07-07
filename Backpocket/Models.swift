@@ -115,6 +115,25 @@ final class FactStore: ObservableObject {
         facts.removeAll { $0.id == id }
     }
 
+    /// Stores text captured from the Services menu. Returns the existing fact
+    /// when the value is already saved, and fills an untouched empty row before
+    /// appending a new one.
+    func captured(_ value: String) -> Fact {
+        if let existing = facts.first(where: { $0.value == value }) {
+            return existing
+        }
+        if let index = facts.firstIndex(where: {
+            $0.name.trimmingCharacters(in: .whitespaces).isEmpty &&
+            $0.value.trimmingCharacters(in: .whitespaces).isEmpty
+        }) {
+            facts[index].value = value
+            return facts[index]
+        }
+        let fact = Fact(name: "", value: value)
+        facts.append(fact)
+        return fact
+    }
+
     func markUsed(_ id: UUID, appIdentifier: String?) {
         guard let index = facts.firstIndex(where: { $0.id == id }) else { return }
         let now = Date()

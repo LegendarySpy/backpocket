@@ -26,6 +26,24 @@
 	<true/>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSServices</key>
+	<array>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Save to Backpocket</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>saveToBackpocket</string>
+			<key>NSPortName</key>
+			<string>Backpocket</string>
+			<key>NSSendTypes</key>
+			<array>
+				<string>NSStringPboardType</string>
+			</array>
+		</dict>
+	</array>
 	<key>BackpocketPolarAPIBaseURL</key>
 	<string>$(BACKPOCKET_POLAR_API_BASE_URL)</string>
 	<key>BackpocketPolarCheckoutURL</key>

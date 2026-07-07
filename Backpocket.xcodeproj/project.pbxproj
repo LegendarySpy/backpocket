@@ -20,6 +20,7 @@
 		A2000000000000000000000B /* Auth.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000B /* Auth.swift */; };
 		A2000000000000000000000D /* Placeholders.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000D /* Placeholders.swift */; };
 		A2000000000000000000000F /* LicenseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000F /* LicenseManager.swift */; };
+		A20000000000000000000012 /* Capture.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000012 /* Capture.swift */; };
 		A2000000000000000000000E /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000002 /* Sparkle */; };
 /* End PBXBuildFile section */
 
@@ -39,6 +40,7 @@
 		A1000000000000000000000D /* Placeholders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Placeholders.swift; sourceTree = "<group>"; };
 		A1000000000000000000000F /* LicenseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LicenseManager.swift; sourceTree = "<group>"; };
 		A10000000000000000000010 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A10000000000000000000012 /* Capture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Capture.swift; sourceTree = "<group>"; };
 		A10000000000000000000011 /* Backpocket.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Backpocket.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -76,6 +78,7 @@
 				A10000000000000000000009 /* SettingsView.swift */,
 				A1000000000000000000000A /* BPLog.swift */,
 				A1000000000000000000000B /* Auth.swift */,
+				A10000000000000000000012 /* Capture.swift */,
 				A1000000000000000000000D /* Placeholders.swift */,
 				A1000000000000000000000F /* LicenseManager.swift */,
 				A1000000000000000000000C /* Backpocket.entitlements */,
@@ -176,6 +179,7 @@
 				A20000000000000000000009 /* SettingsView.swift in Sources */,
 				A2000000000000000000000A /* BPLog.swift in Sources */,
 				A2000000000000000000000B /* Auth.swift in Sources */,
+				A20000000000000000000012 /* Capture.swift in Sources */,
 				A2000000000000000000000D /* Placeholders.swift in Sources */,
 				A2000000000000000000000F /* LicenseManager.swift in Sources */,
 			);

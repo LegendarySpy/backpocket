@@ -63,6 +63,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         _ = FactStore.shared
 
+        NSApp.servicesProvider = CaptureService()
+        NSUpdateDynamicServices()
+
         let trusted = AXIsProcessTrustedWithOptions(
             [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         )

@@ -50,14 +50,26 @@ final class AppSettings: ObservableObject {
 }
 
 struct SettingsRootView: View {
+    private enum Tab { case facts, general, about }
+    @State private var selection = Tab.facts
+
     var body: some View {
-        TabView {
+        TabView(selection: $selection) {
             FactsTab()
                 .tabItem { Label("Facts", systemImage: "person.text.rectangle") }
+                .tag(Tab.facts)
             GeneralTab()
                 .tabItem { Label("General", systemImage: "gearshape") }
+                .tag(Tab.general)
             AboutTab()
                 .tabItem { Label("About", systemImage: "info.circle") }
+                .tag(Tab.about)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .factCaptured)) { _ in
+            selection = .facts
+        }
+        .onAppear {
+            if CaptureService.pendingFocusID != nil { selection = .facts }
         }
     }
 }
@@ -81,19 +93,26 @@ private struct FactsTab: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 6) {
-                    ForEach($store.facts) { $fact in
-                        FactRow(
-                            fact: $fact,
-                            focus: $focusedFact,
-                            isPlanLocked: isPlanLocked(fact)
-                        ) {
-                            withAnimation { store.remove(fact.id) }
+            ScrollViewReader { proxy in
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 6) {
+                        ForEach($store.facts) { $fact in
+                            FactRow(
+                                fact: $fact,
+                                focus: $focusedFact,
+                                isPlanLocked: isPlanLocked(fact)
+                            ) {
+                                withAnimation { store.remove(fact.id) }
+                            }
+                            .id(fact.id)
                         }
                     }
+                    .padding(14)
                 }
-                .padding(14)
+                .onAppear { focusCapturedFact(proxy) }
+                .onReceive(NotificationCenter.default.publisher(for: .factCaptured)) { _ in
+                    focusCapturedFact(proxy)
+                }
             }
 
             Divider()
@@ -135,6 +154,16 @@ private struct FactsTab: View {
             .padding(10)
         }
         .frame(width: 440, height: 360)
+    }
+
+    /// The Settings window may still be animating in, so the focus and scroll
+    /// land after a short beat.
+    private func focusCapturedFact(_ proxy: ScrollViewProxy) {
+        guard let id = CaptureService.takePendingFocus() else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            withAnimation { proxy.scrollTo(id) }
+            focusedFact = id
+        }
     }
 
     private func isPlanLocked(_ fact: Fact) -> Bool {
