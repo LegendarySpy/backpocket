@@ -239,7 +239,9 @@
 				BACKPOCKET_POLAR_LICENSE_BENEFIT_ID = "8c725bcf-1e7f-402b-90c8-19440b7654d2";
 				BACKPOCKET_POLAR_ORGANIZATION_ID = "98d75121-191c-4136-aa56-2c7803173973";
 				BACKPOCKET_POLAR_PORTAL_URL = "https://polar.sh/g-squared/portal";
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_IDENTITY = "Developer ID Application";
+				CODE_SIGN_STYLE = Manual;
+				PROVISIONING_PROFILE_SPECIFIER = "Backpocket Developer ID";
 				COMBINE_HIDPI_IMAGES = YES;
 				CODE_SIGN_ENTITLEMENTS = Backpocket/Backpocket.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
@@ -265,7 +267,9 @@
 				BACKPOCKET_POLAR_LICENSE_BENEFIT_ID = "8c725bcf-1e7f-402b-90c8-19440b7654d2";
 				BACKPOCKET_POLAR_ORGANIZATION_ID = "98d75121-191c-4136-aa56-2c7803173973";
 				BACKPOCKET_POLAR_PORTAL_URL = "https://polar.sh/g-squared/portal";
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_IDENTITY = "Developer ID Application";
+				CODE_SIGN_STYLE = Manual;
+				PROVISIONING_PROFILE_SPECIFIER = "Backpocket Developer ID";
 				COMBINE_HIDPI_IMAGES = YES;
 				CODE_SIGN_ENTITLEMENTS = Backpocket/Backpocket.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
