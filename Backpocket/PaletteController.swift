@@ -187,6 +187,34 @@ final class PaletteController: NSObject, NSWindowDelegate {
         ) { [weak self] note in
             DispatchQueue.main.async { self?.handleAppSwitch(note) }
         }
+
+        // Scrolling the page under the palette moves the caret on screen.
+        // Global monitors only see other apps' events, so our own panel's
+        // scrolls are ignored for free.
+        NSEvent.addGlobalMonitorForEvents(matching: .scrollWheel) { [weak self] _ in
+            DispatchQueue.main.async { self?.handleScroll() }
+        }
+    }
+
+    private var scrollSettleWork: DispatchWorkItem?
+
+    /// Following a live scroll frame-by-frame chases stale AX geometry, so the
+    /// palette waits for scrolling to settle and then slides back onto the caret.
+    private func handleScroll() {
+        guard panel.isVisible else { return }
+        scrollSettleWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.reanchorAfterScroll() }
+        scrollSettleWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+    }
+
+    /// A mouse-fallback anchor means the caret scrolled out of reach; staying
+    /// put beats jumping to wherever the cursor happens to hover.
+    private func reanchorAfterScroll() {
+        guard panel.isVisible else { return }
+        let anchor = CaretLocator.anchor(for: targetApp?.processIdentifier)
+        guard anchor.source != .mouse else { return }
+        position(at: anchor)
     }
 
     private func handleAppSwitch(_ note: Notification) {
@@ -221,7 +249,7 @@ final class PaletteController: NSObject, NSWindowDelegate {
         panel.contentView?.layoutSubtreeIfNeeded()
         panel.makeKeyAndOrderFront(nil)
         focusInputSoon()
-        if !anchor.fromCaret { refinePositionSoon() }
+        if anchor.source != .caret { refinePositionSoon() }
     }
 
     /// Chromium may expose caret geometry only a beat after the nudge; when the
@@ -231,13 +259,14 @@ final class PaletteController: NSObject, NSWindowDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
             guard let self, panel.isVisible, model.query.isEmpty else { return }
             let anchor = CaretLocator.anchor(for: pid)
-            if anchor.fromCaret { position(at: anchor) }
+            if anchor.source == .caret { position(at: anchor) }
         }
     }
 
     /// `reactivate` hands focus back to the app the palette opened over. Skipped
     /// when dismissal came from the user clicking into something else.
     func dismiss(reactivate: Bool = true) {
+        scrollSettleWork?.cancel()
         panel.orderOut(nil)
         model.prepareForDismiss()
         if reactivate { targetApp?.activate() }
