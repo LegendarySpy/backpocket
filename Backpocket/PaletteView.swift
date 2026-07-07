@@ -82,7 +82,6 @@ struct PaletteView: View {
 
     private var trailingHint: String? {
         if model.results.isEmpty, !model.query.isEmpty { return "insert ↩" }
-        if let tag = model.activeTag, model.selected != nil { return "+\(tag)" }
         return nil
     }
 }

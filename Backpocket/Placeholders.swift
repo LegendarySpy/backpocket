@@ -4,22 +4,6 @@ import Foundation
 enum PlaceholderResolver {
     struct Context {
         var appName: String?
-        var addText: String?
-    }
-
-    /// Marks where the palette's add-text ("email+work") lands inside a value.
-    static let addTextToken = "{+}"
-
-    /// True when the value carries its own add-text slot: bare {} or the older {+}.
-    static func hasAddTextMarker(_ text: String) -> Bool {
-        var cursor = text.startIndex
-        while let open = text[cursor...].firstIndex(of: "{") {
-            guard let close = text[text.index(after: open)...].firstIndex(of: "}") else { return false }
-            let token = text[text.index(after: open)..<close].trimmingCharacters(in: .whitespacesAndNewlines)
-            if token.isEmpty || token == "+" { return true }
-            cursor = text.index(after: close)
-        }
-        return false
     }
 
     static let builtInFacts = [
@@ -81,8 +65,6 @@ enum PlaceholderResolver {
         let argument = parts.count > 1 ? String(parts[1]) : nil
 
         switch name {
-        case "", "+":
-            return context.addText ?? ""
         case "date":
             return format(resolveDate(now, argument: argument), defaultFormat: "yyyy-MM-dd", customFormat: formatArgument(argument))
         case "shortdate":

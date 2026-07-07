@@ -48,38 +48,15 @@ final class PaletteModel: ObservableObject {
         if !LicenseManager.shared.state.isLicensed {
             facts = Array(facts.prefix(LicenseManager.freeFactLimit))
         }
-        if !parsed.base.trimmingCharacters(in: .whitespaces).isEmpty {
+        if !query.trimmingCharacters(in: .whitespaces).isEmpty {
             facts += PlaceholderResolver.builtInFacts
         }
-        results = Fuzzy.rank(parsed.base, in: facts, context: appIdentifier, fieldHint: fieldHint)
+        results = Fuzzy.rank(query, in: facts, context: appIdentifier, fieldHint: fieldHint)
         selection = 0
     }
 
-    /// "name+text" splits into the fuzzy query and the add-text. A leading "+"
-    /// is part of the search ("+31" finds a phone number), not an add-text.
-    private var parsed: (base: String, tag: String?) {
-        guard let plus = query.dropFirst().firstIndex(of: "+") else { return (query, nil) }
-        let tag = String(query[query.index(after: plus)...])
-        return (String(query[..<plus]), tag.isEmpty ? nil : tag)
-    }
-
-    var activeTag: String? { parsed.tag }
-
-    /// Where the add-text lands: an explicit {} (or {+}) in the value wins,
-    /// then before the @ of an email as "+text", then appended.
     func resolvedValue(for fact: Fact) -> String {
-        let tag = parsed.tag
-        var value = fact.value
-        if let tag, !PlaceholderResolver.hasAddTextMarker(value) {
-            if let at = value.firstIndex(of: "@"), value.contains(".") {
-                value.insert(contentsOf: "+\(tag)", at: at)
-            } else {
-                value += tag
-            }
-        }
-        var context = placeholderContext
-        context.addText = tag
-        return PlaceholderResolver.resolve(value, context: context)
+        PlaceholderResolver.resolve(fact.value, context: placeholderContext)
     }
 
     var placeholderContext: PlaceholderResolver.Context {
