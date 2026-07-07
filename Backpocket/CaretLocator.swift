@@ -2,15 +2,9 @@ import AppKit
 import ApplicationServices
 
 struct PaletteAnchor {
-    enum Source {
-        case caret   // real caret geometry
-        case element // the focused text box's frame
-        case mouse   // last resort; says nothing about where the text is
-    }
-
     let rect: NSRect        // caret, text box, or fallback point in AppKit coordinates
     let alignmentX: CGFloat // x position the input pill should hug
-    let source: Source
+    let fromCaret: Bool     // anchored to real caret geometry, not a fallback
 }
 
 enum CaretLocator {
@@ -33,15 +27,15 @@ enum CaretLocator {
                 // A huge focused element (web area, canvas) says nothing about
                 // where the user is looking; the mouse is the better guess.
                 if frame.height > 200 {
-                    return PaletteAnchor(rect: pointRect(mouse), alignmentX: mouse.x, source: .mouse)
+                    return PaletteAnchor(rect: pointRect(mouse), alignmentX: mouse.x, fromCaret: false)
                 }
-                return PaletteAnchor(rect: frame, alignmentX: frame.minX, source: .element)
+                return PaletteAnchor(rect: frame, alignmentX: frame.minX, fromCaret: false)
             }
         } else {
             BPLog.log("elementFrame unavailable")
         }
         BPLog.log("fallback=mouse")
-        return PaletteAnchor(rect: pointRect(mouse), alignmentX: mouse.x, source: .mouse)
+        return PaletteAnchor(rect: pointRect(mouse), alignmentX: mouse.x, fromCaret: false)
     }
 
     /// Chromium builds its accessibility tree lazily, so caret geometry misses on
@@ -105,11 +99,11 @@ enum CaretLocator {
                 return PaletteAnchor(
                     rect: NSRect(x: rect.minX, y: frame.minY, width: rect.width, height: frame.height),
                     alignmentX: rect.minX,
-                    source: .caret
+                    fromCaret: true
                 )
             }
         }
-        return PaletteAnchor(rect: rect, alignmentX: rect.minX, source: .caret)
+        return PaletteAnchor(rect: rect, alignmentX: rect.minX, fromCaret: true)
     }
 
     private static func caretRect(of element: AXUIElement) -> CGRect? {
