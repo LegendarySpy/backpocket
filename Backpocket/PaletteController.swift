@@ -12,6 +12,7 @@ final class PaletteModel: ObservableObject {
 
     var appIdentifier: String?
     var appName: String?
+    var fieldHint: String?
     var onCommit: ((Fact, String) -> Void)?
     var onCommitRaw: ((String) -> Void)?
     var onDismiss: (() -> Void)?
@@ -24,9 +25,10 @@ final class PaletteModel: ObservableObject {
         refresh()
     }
 
-    func prepareForShow(appIdentifier: String?, appName: String?) {
+    func prepareForShow(appIdentifier: String?, appName: String?, fieldHint: String?) {
         self.appIdentifier = appIdentifier
         self.appName = appName
+        self.fieldHint = fieldHint
         reset()
     }
 
@@ -44,7 +46,7 @@ final class PaletteModel: ObservableObject {
         if !parsed.base.trimmingCharacters(in: .whitespaces).isEmpty {
             facts += PlaceholderResolver.builtInFacts
         }
-        results = Fuzzy.rank(parsed.base, in: facts, context: appIdentifier)
+        results = Fuzzy.rank(parsed.base, in: facts, context: appIdentifier, fieldHint: fieldHint)
         selection = 0
     }
 
@@ -208,8 +210,13 @@ final class PaletteController: NSObject, NSWindowDelegate {
 
     func show() {
         targetApp = NSWorkspace.shared.frontmostApplication
-        model.prepareForShow(appIdentifier: Self.appIdentifier(for: targetApp), appName: targetApp?.localizedName)
-        let anchor = CaretLocator.anchor(for: targetApp?.processIdentifier)
+        let pid = targetApp?.processIdentifier
+        model.prepareForShow(
+            appIdentifier: Self.appIdentifier(for: targetApp),
+            appName: targetApp?.localizedName,
+            fieldHint: CaretLocator.fieldHint(for: pid)
+        )
+        let anchor = CaretLocator.anchor(for: pid)
         position(at: anchor)
         panel.contentView?.layoutSubtreeIfNeeded()
         panel.makeKeyAndOrderFront(nil)

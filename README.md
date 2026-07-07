@@ -7,6 +7,7 @@ Backpocket is a tiny macOS menu bar utility. Double-tap ⌥ Option in any text f
 ## Highlights
 
 - Caret-anchored palette that opens above or below your text box, wherever there's room
+- Field-aware suggestions: the palette reads the focused field's label or placeholder, so your email fact is already selected in an email box
 - Fuzzy search with matched-letter highlighting; no match means Return types your query as-is
 - The selected result previews exactly what Return will type, with placeholders resolved and sensitive values masked (configurable: all results, selected only, or off)
 - Quick capture: select text in any app, right-click → Services → Save to Backpocket

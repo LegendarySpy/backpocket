@@ -48,6 +48,33 @@ enum CaretLocator {
         )
     }
 
+    /// Words the focused field uses to describe itself (placeholder, title,
+    /// accessibility description, or an associated label element). Fact ranking
+    /// matches these against fact names, so an "Email" field surfaces email facts.
+    static func fieldHint(for pid: pid_t?) -> String? {
+        guard let element = focusedElement(pid: pid) else { return nil }
+        var parts: [String] = []
+        for attribute in [kAXPlaceholderValueAttribute, kAXTitleAttribute, kAXDescriptionAttribute, kAXHelpAttribute] {
+            var ref: CFTypeRef?
+            if AXUIElementCopyAttributeValue(element, attribute as CFString, &ref) == .success,
+               let text = ref as? String, !text.isEmpty {
+                parts.append(text)
+            }
+        }
+        var labelRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(element, kAXTitleUIElementAttribute as CFString, &labelRef) == .success,
+           let raw = labelRef, CFGetTypeID(raw) == AXUIElementGetTypeID() {
+            var valueRef: CFTypeRef?
+            if AXUIElementCopyAttributeValue(raw as! AXUIElement, kAXValueAttribute as CFString, &valueRef) == .success,
+               let text = valueRef as? String, !text.isEmpty {
+                parts.append(text)
+            }
+        }
+        let hint = parts.joined(separator: " ")
+        BPLog.log("fieldHint=\(hint.isEmpty ? "none" : hint)")
+        return hint.isEmpty ? nil : hint
+    }
+
     private static func caretAnchor(pid: pid_t?) -> PaletteAnchor? {
         guard let element = focusedElement(pid: pid) else { return nil }
         guard let axRect = caretRect(of: element) else {

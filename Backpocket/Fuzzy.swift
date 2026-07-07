@@ -12,6 +12,7 @@ enum Fuzzy {
         _ query: String,
         in allFacts: [Fact],
         context appIdentifier: String? = nil,
+        fieldHint: String? = nil,
         limit: Int = 4,
         now: Date = Date()
     ) -> [FuzzyResult] {
@@ -19,36 +20,63 @@ enum Fuzzy {
         let facts = allFacts.filter {
             !$0.name.trimmingCharacters(in: .whitespaces).isEmpty && !$0.value.isEmpty
         }
+        let hintTokens = tokens(in: fieldHint ?? "")
+        // Usage plus how well the fact's name matches the focused field's label.
+        func contextScore(_ fact: Fact) -> Int {
+            usageScore(for: fact, context: appIdentifier, now: now) + fieldScore(for: fact, hintTokens: hintTokens)
+        }
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else {
             let recent = facts.sorted { a, b in
-                let scoreA = usageScore(for: a, context: appIdentifier, now: now)
-                let scoreB = usageScore(for: b, context: appIdentifier, now: now)
+                let (scoreA, scoreB) = (contextScore(a), contextScore(b))
                 if scoreA != scoreB { return scoreA > scoreB }
                 let (ua, ub) = (a.lastUsed ?? .distantPast, b.lastUsed ?? .distantPast)
                 if ua != ub { return ua > ub }
                 return a.name < b.name
             }
             return recent.prefix(limit).map {
-                FuzzyResult(
-                    fact: $0,
-                    score: usageScore(for: $0, context: appIdentifier, now: now),
-                    matchedIndices: []
-                )
+                FuzzyResult(fact: $0, score: contextScore($0), matchedIndices: [])
             }
         }
         let matches: [FuzzyResult] = facts.compactMap { fact in
-            guard let result = match(query: trimmed, candidate: fact.name) else { return nil }
-            return FuzzyResult(
-                fact: fact,
-                score: result.score * 20 + usageScore(for: fact, context: appIdentifier, now: now),
-                matchedIndices: result.indices
-            )
+            if let result = match(query: trimmed, candidate: fact.name) {
+                return FuzzyResult(
+                    fact: fact,
+                    score: result.score * 20 + contextScore(fact),
+                    matchedIndices: result.indices
+                )
+            }
+            return nil
         }
         let ranked = matches.sorted { a, b in
             a.score != b.score ? a.score > b.score : a.fact.name < b.fact.name
         }
         return Array(ranked.prefix(limit))
+    }
+
+    /// How strongly the fact's name overlaps the field's self-description.
+    /// An exact shared word ("email") outranks any recency, so the right fact
+    /// is already selected when the palette opens on a labeled field.
+    private static func fieldScore(for fact: Fact, hintTokens: Set<String>) -> Int {
+        guard !hintTokens.isEmpty else { return 0 }
+        var score = 0
+        for token in tokens(in: fact.name) {
+            if hintTokens.contains(token) {
+                score += 90
+            } else if hintTokens.contains(where: { $0.hasPrefix(token) || token.hasPrefix($0) }) {
+                score += 45
+            }
+        }
+        return min(score, 150)
+    }
+
+    private static func tokens(in text: String) -> Set<String> {
+        Set(
+            text.lowercased()
+                .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+                .map(String.init)
+                .filter { $0.count >= 3 }
+        )
     }
 
     static func match(query: String, candidate: String) -> (score: Int, indices: Set<Int>)? {
