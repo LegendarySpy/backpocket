@@ -94,7 +94,6 @@ jobs:
           set -euo pipefail
           APP_PATH=".build/${APP_NAME}.xcarchive/Products/Applications/${APP_NAME}.app"
           NOTARY_ZIP=".build/${APP_NAME}-notary.zip"
-          DMG_ROOT=".build/dmg-root"
           FINAL_DMG=".build/${APP_NAME}.dmg"
 
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
@@ -115,16 +114,7 @@ jobs:
             exit 1
           fi
           xcrun stapler staple "$APP_PATH"
-          rm -rf "$DMG_ROOT" "$FINAL_DMG"
-          mkdir -p "$DMG_ROOT"
-          cp -R "$APP_PATH" "$DMG_ROOT/"
-          ln -s /Applications "$DMG_ROOT/Applications"
-          hdiutil create \
-            -volname "$APP_NAME" \
-            -srcfolder "$DMG_ROOT" \
-            -ov \
-            -format UDZO \
-            "$FINAL_DMG"
+          ./scripts/make_dmg.sh "$APP_PATH" "$FINAL_DMG"
           xcrun notarytool submit "$FINAL_DMG" \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_APP_SPECIFIC_PASSWORD" \
