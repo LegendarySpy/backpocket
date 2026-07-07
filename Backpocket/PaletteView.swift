@@ -113,12 +113,6 @@ private struct RowPill: View {
                     .font(.system(size: 8.5))
                     .foregroundStyle(.tertiary)
             }
-            if result.usedInCurrentApp {
-                Image(systemName: "scope")
-                    .font(.system(size: 8.5, weight: .semibold))
-                    .foregroundStyle(.tertiary)
-                    .help("Used in this app")
-            }
         }
         .padding(.horizontal, 11)
         .padding(.vertical, 5)

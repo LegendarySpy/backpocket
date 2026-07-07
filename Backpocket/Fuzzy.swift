@@ -4,7 +4,6 @@ struct FuzzyResult: Identifiable, Equatable {
     let fact: Fact
     let score: Int
     let matchedIndices: Set<Int>
-    let usedInCurrentApp: Bool
     var id: UUID { fact.id }
 }
 
@@ -34,8 +33,7 @@ enum Fuzzy {
                 FuzzyResult(
                     fact: $0,
                     score: usageScore(for: $0, context: appIdentifier, now: now),
-                    matchedIndices: [],
-                    usedInCurrentApp: hasCurrentAppUsage($0, context: appIdentifier)
+                    matchedIndices: []
                 )
             }
         }
@@ -44,8 +42,7 @@ enum Fuzzy {
             return FuzzyResult(
                 fact: fact,
                 score: result.score * 20 + usageScore(for: fact, context: appIdentifier, now: now),
-                matchedIndices: result.indices,
-                usedInCurrentApp: hasCurrentAppUsage(fact, context: appIdentifier)
+                matchedIndices: result.indices
             )
         }
         let ranked = matches.sorted { a, b in
@@ -111,10 +108,5 @@ enum Fuzzy {
         case 0..<(60 * 60 * 24 * 90): return 8
         default: return 2
         }
-    }
-
-    private static func hasCurrentAppUsage(_ fact: Fact, context appIdentifier: String?) -> Bool {
-        guard let appIdentifier else { return false }
-        return fact.appUsage[appIdentifier] != nil
     }
 }
