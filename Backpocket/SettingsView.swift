@@ -36,6 +36,22 @@ enum TriggerModifier: String, CaseIterable, Identifiable {
     }
 }
 
+enum PalettePreviewMode: String, CaseIterable, Identifiable {
+    case always, selected, never
+
+    static let defaultsKey = "palettePreview"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .always: "All results"
+        case .selected: "Selected result"
+        case .never: "Never"
+        }
+    }
+}
+
 @MainActor
 final class AppSettings: ObservableObject {
     static let shared = AppSettings()
@@ -44,8 +60,13 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(trigger.rawValue, forKey: TriggerModifier.defaultsKey) }
     }
 
+    @Published var palettePreview: PalettePreviewMode {
+        didSet { UserDefaults.standard.set(palettePreview.rawValue, forKey: PalettePreviewMode.defaultsKey) }
+    }
+
     init() {
         trigger = TriggerModifier(rawValue: UserDefaults.standard.string(forKey: TriggerModifier.defaultsKey) ?? "") ?? .option
+        palettePreview = PalettePreviewMode(rawValue: UserDefaults.standard.string(forKey: PalettePreviewMode.defaultsKey) ?? "") ?? .selected
     }
 }
 
@@ -343,6 +364,15 @@ private struct GeneralTab: View {
                 ForEach(TriggerModifier.allCases) { trigger in
                     Text("Double-tap \(trigger.label)").tag(trigger)
                 }
+            }
+
+            Picker(selection: $settings.palettePreview) {
+                ForEach(PalettePreviewMode.allCases) { mode in
+                    Text(mode.label).tag(mode)
+                }
+            } label: {
+                Text("Preview values")
+                Text("Show what Return will type next to results in the palette.")
             }
 
             Toggle("Launch at login", isOn: $launchAtLogin)

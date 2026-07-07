@@ -8,6 +8,7 @@ Backpocket is a tiny macOS menu bar utility. Double-tap ⌥ Option in any text f
 
 - Caret-anchored palette that opens above or below your text box, wherever there's room
 - Fuzzy search with matched-letter highlighting; no match means Return types your query as-is
+- The selected result previews exactly what Return will type, with placeholders resolved and sensitive values masked (configurable: all results, selected only, or off)
 - Quick capture: select text in any app, right-click → Services → Save to Backpocket
 - Keystroke insertion via synthetic typing, so values never enter the clipboard
 - Dynamic placeholders in values and built-in palette results: `{date}`, `{shortdate}`, `{longdate}`, `{time}`, `{datetime}`, `{iso}`, `{timestamp}`, `{clipboard}`, `{username}`, `{fullname}`, `{hostname}`, `{app}`, `{uuid}`, or offset/formatted dates like `{date:+7:MMM d}`

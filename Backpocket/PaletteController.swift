@@ -78,6 +78,16 @@ final class PaletteModel: ObservableObject {
         PlaceholderResolver.Context(appName: appName)
     }
 
+    /// What Return would type, shown dimmed in the pill. Sensitive values stay
+    /// masked until they're inserted.
+    func preview(for fact: Fact) -> String? {
+        if fact.isSensitive { return "••••••" }
+        let resolved = resolvedValue(for: fact)
+            .components(separatedBy: .newlines)
+            .joined(separator: " ")
+        return resolved.isEmpty ? nil : resolved
+    }
+
     var selectedResult: FuzzyResult? {
         results.indices.contains(selection) ? results[selection] : nil
     }

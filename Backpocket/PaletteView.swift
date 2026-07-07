@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PaletteView: View {
     @ObservedObject var model: PaletteModel
+    @ObservedObject private var settings = AppSettings.shared
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -20,6 +21,7 @@ struct PaletteView: View {
             alignment: model.growsUp ? .bottomLeading : .topLeading
         )
         .animation(.smooth(duration: 0.18), value: model.results)
+        .animation(.smooth(duration: 0.15), value: model.selection)
         .onAppear {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { focused = true }
         }
@@ -29,10 +31,23 @@ struct PaletteView: View {
     private var rowPills: some View {
         let rows = Array(model.results.enumerated())
         ForEach(model.growsUp ? rows.reversed() : rows, id: \.element.id) { _, result in
-            RowPill(result: result, isSelected: result.id == model.selectedResult?.id)
+            let isSelected = result.id == model.selectedResult?.id
+            RowPill(
+                result: result,
+                preview: preview(for: result, isSelected: isSelected),
+                isSelected: isSelected
+            )
                 .onTapGesture { model.commit(result.fact) }
                 .geometryGroup()
                 .transition(.blurReplace)
+        }
+    }
+
+    private func preview(for result: FuzzyResult, isSelected: Bool) -> String? {
+        switch settings.palettePreview {
+        case .always: model.preview(for: result.fact)
+        case .selected: isSelected ? model.preview(for: result.fact) : nil
+        case .never: nil
         }
     }
 
@@ -71,6 +86,7 @@ struct PaletteView: View {
 
 private struct RowPill: View {
     let result: FuzzyResult
+    let preview: String?
     let isSelected: Bool
     @State private var hovering = false
 
@@ -81,9 +97,17 @@ private struct RowPill: View {
     }
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 6) {
             Text(highlightedName)
                 .lineLimit(1)
+                .layoutPriority(1)
+            if let preview {
+                Text(preview)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
             if result.fact.isSensitive {
                 Image(systemName: "lock.fill")
                     .font(.system(size: 8.5))
