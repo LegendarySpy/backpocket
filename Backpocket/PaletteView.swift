@@ -23,26 +23,31 @@ struct PaletteView: View {
             maxWidth: .infinity, maxHeight: .infinity,
             alignment: model.growsUp ? .bottomLeading : .topLeading
         )
-        .animation(model.animateChanges ? .smooth(duration: 0.18) : nil, value: model.results)
-        .animation(model.animateChanges ? .smooth(duration: 0.15) : nil, value: model.selection)
+        .animation(.smooth(duration: 0.18), value: model.results)
+        .animation(.smooth(duration: 0.15), value: model.selection)
         .onAppear {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { focused = true }
         }
+        .onChange(of: model.query) { model.selection = 0 }
     }
 
+    /// Rows are held back until the panel is visible so their blur-replace
+    /// entrance plays on screen, like the results population used to.
     @ViewBuilder
     private var rowPills: some View {
-        let rows = Array(model.results.enumerated())
-        ForEach(model.growsUp ? rows.reversed() : rows, id: \.element.id) { _, result in
-            let isSelected = result.id == model.selectedResult?.id
-            RowPill(
-                result: result,
-                preview: preview(for: result, isSelected: isSelected),
-                isSelected: isSelected
-            )
-                .onTapGesture { model.commit(result.fact) }
-                .geometryGroup()
-                .transition(.blurReplace)
+        if !model.introducing {
+            let rows = Array(model.results.enumerated())
+            ForEach(model.growsUp ? rows.reversed() : rows, id: \.element.id) { _, result in
+                let isSelected = result.id == model.selectedResult?.id
+                RowPill(
+                    result: result,
+                    preview: preview(for: result, isSelected: isSelected),
+                    isSelected: isSelected
+                )
+                    .onTapGesture { model.commit(result.fact) }
+                    .geometryGroup()
+                    .transition(.blurReplace)
+            }
         }
     }
 

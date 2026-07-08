@@ -3,12 +3,22 @@ import SwiftUI
 
 @MainActor
 final class PaletteModel: ObservableObject {
-    @Published var query = "" {
-        didSet { if query != oldValue { refresh() } }
-    }
-    @Published var results: [FuzzyResult] = []
+    @Published var query = ""
     @Published var selection = 0
     @Published var growsUp = true
+
+    /// Derived, not stored: publishing results from the query's didSet would
+    /// publish mid-view-update whenever the text field writes the binding.
+    var results: [FuzzyResult] {
+        var facts = FactStore.shared.facts
+        if !LicenseManager.shared.state.isLicensed {
+            facts = Array(facts.prefix(LicenseManager.freeFactLimit))
+        }
+        if !query.trimmingCharacters(in: .whitespaces).isEmpty {
+            facts += PlaceholderResolver.builtInFacts
+        }
+        return Fuzzy.rank(query, in: facts, context: appIdentifier, fieldHint: fieldHint)
+    }
 
     var appIdentifier: String?
     var appName: String?
@@ -20,39 +30,22 @@ final class PaletteModel: ObservableObject {
     func reset() {
         query = ""
         selection = 0
-        refresh()
     }
 
-    /// False while the palette is populating so it opens settled; pills only
-    /// animate for changes the user causes.
-    var animateChanges = false
+    /// True until the panel is on screen; the pills blur-replace in alongside
+    /// the window fade once it flips.
+    @Published var introducing = true
 
     func prepareForShow(appIdentifier: String?, appName: String?, fieldHint: String?) {
         self.appIdentifier = appIdentifier
         self.appName = appName
         self.fieldHint = fieldHint
-        animateChanges = false
+        introducing = true
         reset()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { self.animateChanges = true }
     }
 
     func prepareForDismiss() {
-        animateChanges = false
-        query = ""
-        selection = 0
-        results = []
-    }
-
-    func refresh() {
-        var facts = FactStore.shared.facts
-        if !LicenseManager.shared.state.isLicensed {
-            facts = Array(facts.prefix(LicenseManager.freeFactLimit))
-        }
-        if !query.trimmingCharacters(in: .whitespaces).isEmpty {
-            facts += PlaceholderResolver.builtInFacts
-        }
-        results = Fuzzy.rank(query, in: facts, context: appIdentifier, fieldHint: fieldHint)
-        selection = 0
+        reset()
     }
 
     func resolvedValue(for fact: Fact) -> String {
@@ -154,7 +147,7 @@ final class PaletteController: NSObject, NSWindowDelegate {
         panel.hidesOnDeactivate = false
         panel.isMovableByWindowBackground = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
-        panel.animationBehavior = .none
+        panel.animationBehavior = .utilityWindow
         panel.delegate = self
         panel.contentView = PassThroughHostingView(rootView: PaletteView(model: model))
         panel.onCancel = { [weak self] in self?.dismiss() }
@@ -201,14 +194,30 @@ final class PaletteController: NSObject, NSWindowDelegate {
     /// Bumped when a pending show becomes irrelevant so its anchor resolution is dropped.
     private var showGeneration = 0
 
-    private var prefetched: (anchor: PaletteAnchor, pid: pid_t?, at: TimeInterval)?
+    private var staged: (anchor: PaletteAnchor, pid: pid_t?, at: TimeInterval)?
+    private var prefetchingPid: pid_t??
+    /// Set when show() arrives while the first tap's resolve is still running;
+    /// its completion presents instead of a fresh resolve starting over.
+    private var pendingShowGeneration: Int?
 
-    /// The first tap of a double-tap hides the Chromium wait behind the second tap.
+    /// The first tap of a double-tap does all the work — anchor, field hint,
+    /// model prep, panel position and layout — so the second tap only orders front.
     func prefetchAnchor() {
         guard !panel.isVisible else { return }
-        let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        let app = NSWorkspace.shared.frontmostApplication
+        let pid = app?.processIdentifier
+        prefetchingPid = .some(pid)
         CaretLocator.resolveAnchor(for: pid) { [weak self] anchor in
-            self?.prefetched = (anchor, pid, ProcessInfo.processInfo.systemUptime)
+            guard let self else { return }
+            prefetchingPid = nil
+            stage(at: anchor, app: app)
+            if let pending = pendingShowGeneration, pending == showGeneration {
+                pendingShowGeneration = nil
+                staged = nil
+                orderFront(anchor: anchor)
+            } else {
+                staged = (anchor, pid, ProcessInfo.processInfo.systemUptime)
+            }
         }
     }
 
@@ -217,29 +226,48 @@ final class PaletteController: NSObject, NSWindowDelegate {
         let generation = showGeneration
         targetApp = NSWorkspace.shared.frontmostApplication
         let pid = targetApp?.processIdentifier
-        if let cached = prefetched, cached.anchor.fromCaret, cached.pid == pid,
-           ProcessInfo.processInfo.systemUptime - cached.at < 0.6 {
-            prefetched = nil
-            present(at: cached.anchor, pid: pid)
+        pendingShowGeneration = nil
+        if let staged, staged.pid == pid,
+           ProcessInfo.processInfo.systemUptime - staged.at < 0.6 {
+            self.staged = nil
+            orderFront(anchor: staged.anchor)
             return
         }
-        prefetched = nil
+        staged = nil
+        if prefetchingPid == .some(pid) {
+            pendingShowGeneration = generation
+            return
+        }
         CaretLocator.resolveAnchor(for: pid) { [weak self] anchor in
             guard let self, generation == showGeneration else { return }
             present(at: anchor, pid: pid)
         }
     }
 
+    /// Cold path: no usable first-tap work, so stage and order front together.
     private func present(at anchor: PaletteAnchor, pid: pid_t?) {
-        // The field hint waits until now so a freshly nudged Chromium tree can answer.
+        stage(at: anchor, app: targetApp)
+        orderFront(anchor: anchor)
+    }
+
+    /// Everything the palette needs on screen except being on screen. The field
+    /// hint runs here so a freshly nudged Chromium tree has had time to answer.
+    private func stage(at anchor: PaletteAnchor, app: NSRunningApplication?) {
         model.prepareForShow(
-            appIdentifier: Self.appIdentifier(for: targetApp),
-            appName: targetApp?.localizedName,
-            fieldHint: CaretLocator.fieldHint(for: pid)
+            appIdentifier: Self.appIdentifier(for: app),
+            appName: app?.localizedName,
+            fieldHint: CaretLocator.fieldHint(for: app?.processIdentifier)
         )
         position(at: anchor)
         panel.contentView?.layoutSubtreeIfNeeded()
+    }
+
+    private func orderFront(anchor: PaletteAnchor) {
         panel.makeKeyAndOrderFront(nil)
+        // Pills enter once the panel is visible so their blur-replace rides the window fade.
+        DispatchQueue.main.async { [weak self] in
+            withAnimation(.smooth(duration: 0.08)) { self?.model.introducing = false }
+        }
         focusInputSoon()
         if !anchor.fromCaret { refinePositionSoon() }
     }
@@ -272,11 +300,9 @@ final class PaletteController: NSObject, NSWindowDelegate {
     private func insert(_ fact: Fact, typing value: String) {
         let appIdentifier = model.appIdentifier
         dismiss()
-        let type = {
+        let type = { [weak self] in
             FactStore.shared.markUsed(fact.id, appIdentifier: appIdentifier)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-                Typer.type(value)
-            }
+            self?.deliverSoon(value)
         }
         if fact.isSensitive {
             Auth.requireIfNeeded(reason: "insert \(fact.name)", onSuccess: type)
@@ -288,6 +314,10 @@ final class PaletteController: NSObject, NSWindowDelegate {
     private func insertRaw(_ text: String) {
         dismiss()
         let value = PlaceholderResolver.resolve(text, context: model.placeholderContext)
+        deliverSoon(value)
+    }
+
+    private func deliverSoon(_ value: String) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
             Typer.type(value)
         }
