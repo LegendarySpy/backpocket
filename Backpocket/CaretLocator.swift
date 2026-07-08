@@ -28,6 +28,11 @@ enum CaretLocator {
             completion(caret)
             return
         }
+        // Polling exists for Chromium's async tree; a terminal never grows a caret.
+        if isTerminal(pid) {
+            completion(fallbackAnchor(pid: pid))
+            return
+        }
         nudgeChromium(pid: pid)
         pollForCaret(pid: pid, attempt: 1, completion: completion)
     }
@@ -55,6 +60,7 @@ enum CaretLocator {
     }
 
     private static func fallbackAnchor(pid: pid_t?) -> PaletteAnchor {
+        if isTerminal(pid), let anchor = terminalAnchor(pid: pid) { return anchor }
         let mouse = NSEvent.mouseLocation
         if let element = focusedElement(pid: pid),
            let frame = elementFrame(of: element).map(convert) {
@@ -72,6 +78,109 @@ enum CaretLocator {
         }
         BPLog.log("fallback=mouse")
         return PaletteAnchor(rect: pointRect(mouse), alignmentX: mouse.x, fromCaret: false)
+    }
+
+    // MARK: - Terminals
+
+    private static let terminalBundleIDs: Set<String> = [
+        "com.apple.Terminal", "com.googlecode.iterm2", "com.mitchellh.ghostty",
+        "net.kovidgoyal.kitty", "org.alacritty", "com.github.wez.wezterm",
+        "dev.warp.Warp-Stable",
+    ]
+
+    private static func isTerminal(_ pid: pid_t?) -> Bool {
+        guard let pid, let bundleID = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier else {
+            return false
+        }
+        return terminalBundleIDs.contains(bundleID)
+    }
+
+    /// GPU terminals answer no bounds-for-range (ghostty#9932, planned for 1.4),
+    /// but their visible text plus the content frame is a character grid, and
+    /// typing lands at the end of the bottom-most prompt-shaped line.
+    private static func terminalAnchor(pid: pid_t?) -> PaletteAnchor? {
+        let element = focusedElement(pid: pid)
+        let frame = element.flatMap { elementFrame(of: $0).map(convert) } ?? focusedWindowFrame(pid: pid)
+        // Small focused elements (Warp's input block) do better on the generic path.
+        guard let frame, isOnScreen(frame), frame.height > 200 else { return nil }
+        guard let element, let text = stringValue(of: element),
+              let anchor = gridAnchor(text: text, frame: frame, pid: pid) else {
+            BPLog.log("terminal fallback=frame bottom-left frame=\(frame)")
+            let cell = pid.flatMap { measuredCells[$0]?.height } ?? 17
+            let rect = NSRect(x: frame.minX, y: frame.minY, width: 2, height: cell)
+            return PaletteAnchor(rect: rect, alignmentX: rect.minX, fromCaret: false)
+        }
+        return anchor
+    }
+
+    private static let promptGlyphs: Set<Character> = ["❯", "›", ">", "$", "%", "#", "➜", "→", "λ"]
+
+    /// Cell sizes measured from moments the buffer spanned the grid, remembered
+    /// per process so short buffers (a fresh prompt) reuse real geometry.
+    private static var measuredCells: [pid_t: CGSize] = [:]
+
+    private static func gridAnchor(text: String, frame: NSRect, pid: pid_t?) -> PaletteAnchor? {
+        let lines = text.components(separatedBy: "\n")
+        guard let row = lines.lastIndex(where: { line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard let first = trimmed.first, let last = trimmed.last else { return false }
+            return promptGlyphs.contains(first) || promptGlyphs.contains(last)
+        }) else { return nil }
+
+        var measured = pid.flatMap { measuredCells[$0] } ?? .zero
+
+        // When the buffer fills the grid the division is an exact measurement
+        // of the cell height; a short buffer reuses the last measurement.
+        let naturalHeight = frame.height / CGFloat(lines.count)
+        if (8 ... 40).contains(naturalHeight) { measured.height = naturalHeight }
+        let cell = measured.height > 0 ? measured.height : 17
+
+        // Same for width: trust it only when the longest line spans the grid,
+        // which a monospace width-to-height ratio confirms.
+        let columns = lines.lazy.map(\.count).max() ?? 0
+        let naturalWidth = frame.width / CGFloat(max(columns, 1))
+        if naturalWidth > cell * 0.3, naturalWidth < cell * 0.8 { measured.width = naturalWidth }
+        if let pid, measured != .zero {
+            measuredCells[pid] = measured
+            measuredCells = measuredCells.filter { NSRunningApplication(processIdentifier: $0.key) != nil }
+        }
+
+        // Shorter than the grid the buffer hangs from the top, longer only the
+        // tail is visible.
+        let y = naturalHeight < 8
+            ? frame.minY + CGFloat(lines.count - 1 - row) * cell
+            : frame.maxY - CGFloat(row + 1) * cell
+
+        var x = frame.minX
+        if measured.width > 0 {
+            let gridColumns = Int(frame.width / measured.width)
+            x = frame.minX + CGFloat(min(lines[row].count + 1, gridColumns)) * measured.width
+        }
+        let rect = NSRect(
+            x: min(x, frame.maxX - 8),
+            y: max(frame.minY, min(y, frame.maxY - cell)),
+            width: 2,
+            height: cell
+        )
+        BPLog.log("terminal grid rows=\(lines.count) row=\(row) cell=\(measured) rect=\(rect)")
+        return PaletteAnchor(rect: rect, alignmentX: rect.minX, fromCaret: false)
+    }
+
+    private static func stringValue(of element: AXUIElement) -> String? {
+        var ref: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &ref) == .success else {
+            return nil
+        }
+        return ref as? String
+    }
+
+    private static func focusedWindowFrame(pid: pid_t?) -> NSRect? {
+        guard let pid else { return nil }
+        var ref: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            AXUIElementCreateApplication(pid), kAXFocusedWindowAttribute as CFString, &ref
+        ) == .success, let raw = ref, CFGetTypeID(raw) == AXUIElementGetTypeID() else { return nil }
+        return elementFrame(of: raw as! AXUIElement).map(convert)
     }
 
     /// Warming an app when it activates means its lazy Chromium accessibility
