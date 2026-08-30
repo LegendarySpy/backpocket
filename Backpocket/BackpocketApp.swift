@@ -85,7 +85,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ = FactStore.shared
 
         NSApp.servicesProvider = CaptureService()
-        NSUpdateDynamicServices()
 
         // Monitors registered before trust exists deliver nothing; re-arm on grant
         // so the trigger starts working without a relaunch.
@@ -98,7 +97,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             showSettings()
         }
         LicenseManager.shared.refresh()
-        Updater.shared.checkQuietly()
+        _ = Updater.shared
     }
 
     func showSettings() {

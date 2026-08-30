@@ -113,9 +113,10 @@ saved facts. Extra facts are preserved locally if a license is removed, but only
 the first 5 are available in the palette until the license is restored.
 
 License keys are stored in Keychain. The app stores only activation/cache
-metadata in `UserDefaults` and refreshes with Polar on launch. A previously
-validated lifetime license remains usable through network or Polar outages;
-an explicit revoked, disabled, expired, or invalid response removes access.
+metadata in `UserDefaults` and revalidates with Polar when the cached check is
+more than 24 hours old. A previously validated lifetime license remains usable
+through network or Polar outages; an explicit revoked, disabled, expired, or
+invalid response removes access.
 
 ## Privacy and terms
 

@@ -9,7 +9,6 @@ final class Updater: NSObject, ObservableObject {
 
     enum Status: Equatable {
         case unknown
-        case checking
         case upToDate(Date)
         case available(String)
         case failed(String)
@@ -44,24 +43,9 @@ final class Updater: NSObject, ObservableObject {
         controller.checkForUpdates(nil)
     }
 
-    /// A quiet check on launch, so the About tab is already accurate the first
-    /// time it's opened rather than after the user prods it.
-    func checkQuietly() {
-        guard controller.updater.canCheckForUpdates else { return }
-        status = .checking
-        controller.updater.checkForUpdateInformation()
-        // Sparkle drops a check that races an automatic one, and does so without
-        // a delegate callback; without this the About tab spins forever.
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(30))
-            if case .checking = status { status = .unknown }
-        }
-    }
-
     var summary: String {
         switch status {
         case .unknown: "Not checked yet"
-        case .checking: "Checking…"
         case .upToDate(let date): "Up to date · checked \(Self.relative.localizedString(for: date, relativeTo: Date()))"
         case .available(let version): "Version \(version) is available"
         case .failed(let message): message

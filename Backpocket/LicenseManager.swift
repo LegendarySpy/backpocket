@@ -34,6 +34,7 @@ struct LicenseSnapshot: Codable, Equatable {
 final class LicenseManager: ObservableObject {
     static let shared = LicenseManager()
     static let freeFactLimit = 5
+    private static let validationInterval: TimeInterval = 24 * 60 * 60
 
     @Published private(set) var state: LicenseState
     @Published private(set) var isWorking = false
@@ -75,6 +76,12 @@ final class LicenseManager: ObservableObject {
             // gone the user is unlicensed — but never wipe the cached snapshot on a
             // mere read failure; only an explicit "Remove" clears stored data.
             state = currentSnapshot == nil ? .missing : .inactive("License key not found on this Mac")
+            return
+        }
+        if let snapshot = currentSnapshot,
+           snapshot.isUsable,
+           snapshot.lastValidatedAt.addingTimeInterval(Self.validationInterval) > Date() {
+            state = .active(snapshot)
             return
         }
 

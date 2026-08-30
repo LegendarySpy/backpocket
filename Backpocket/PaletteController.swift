@@ -187,6 +187,7 @@ final class PaletteController: NSObject, NSWindowDelegate {
     private var activationPrefetch: Task<Void, Never>?
 
     private func warmAndPrefetch(_ app: NSRunningApplication) {
+        guard Permissions.shared.isTrusted else { return }
         CaretLocator.warmUp(pid: app.processIdentifier)
         activationPrefetch?.cancel()
         let pid = app.processIdentifier
@@ -200,6 +201,7 @@ final class PaletteController: NSObject, NSWindowDelegate {
     }
 
     private func handleAppSwitch(_ note: Notification) {
+        Permissions.shared.refresh()
         guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
               app.processIdentifier != ProcessInfo.processInfo.processIdentifier
         else { return }

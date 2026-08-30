@@ -720,13 +720,9 @@ private struct AboutTab: View {
     private var updateStatus: some View {
         VStack(spacing: 8) {
             HStack(spacing: 6) {
-                if case .checking = updater.status {
-                    ProgressView().controlSize(.small)
-                } else {
-                    Image(systemName: icon)
-                        .font(.system(size: 11))
-                        .foregroundStyle(tint)
-                }
+                Image(systemName: icon)
+                    .font(.system(size: 11))
+                    .foregroundStyle(tint)
                 Text(updater.summary)
                     .font(.system(size: 11.5))
                     .foregroundStyle(.secondary)

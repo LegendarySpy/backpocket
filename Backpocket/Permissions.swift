@@ -16,7 +16,8 @@ final class Permissions: ObservableObject {
     private var timer: Timer?
 
     func startWatching() {
-        guard timer == nil else { return }
+        refresh()
+        guard !isTrusted, timer == nil else { return }
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
         }
@@ -27,7 +28,13 @@ final class Permissions: ObservableObject {
         guard trusted != isTrusted else { return }
         isTrusted = trusted
         BPLog.log("accessibility trust -> \(trusted)")
-        if trusted { onTrustGained?() }
+        if trusted {
+            timer?.invalidate()
+            timer = nil
+            onTrustGained?()
+        } else {
+            startWatching()
+        }
     }
 
     func promptIfNeeded() {
