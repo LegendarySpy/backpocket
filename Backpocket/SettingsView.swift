@@ -586,45 +586,44 @@ private struct AboutTab: View {
     }
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 0) {
             hero
-            licenseCard
             updateStatus
+                .padding(.top, 18)
+
+            Spacer(minLength: 18)
+
+            licenseCard
         }
         .padding(20)
         .frame(width: 440, height: 360)
     }
 
     private var hero: some View {
-        HStack(spacing: 14) {
+        VStack(spacing: 7) {
             Image(nsImage: NSApp.applicationIconImage)
                 .resizable()
-                .frame(width: 62, height: 62)
+                .frame(width: 72, height: 72)
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Backpocket")
-                    .font(.system(size: 20, weight: .semibold))
-                Text("Your facts, one double-tap away.")
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(.secondary)
-                Text("Version \(version)")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
-            }
-
-            Spacer(minLength: 0)
+            Text("Backpocket")
+                .font(.system(size: 21, weight: .semibold))
+            Text("Version \(version)")
+                .font(.system(size: 11.5))
+                .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity)
     }
 
     private var licenseCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 9) {
+            HStack(spacing: 10) {
                 Image(systemName: license.state.isLicensed ? "checkmark.seal.fill" : "seal")
                     .foregroundStyle(license.state.isLicensed ? Color.green : Color.secondary)
+                    .frame(width: 28, height: 28)
+                    .background(.quaternary, in: Circle())
 
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(license.state.isLicensed ? "Unlimited" : "Free plan")
+                    Text(license.state.isLicensed ? "Backpocket Unlimited" : "Free plan")
                         .font(.system(size: 13, weight: .semibold))
                     Text(licenseSubtitle)
                         .font(.system(size: 11.5))
@@ -635,6 +634,8 @@ private struct AboutTab: View {
 
                 if license.isWorking {
                     ProgressView().controlSize(.small)
+                } else if !license.state.isLicensed, let checkoutURL = license.checkoutURL {
+                    Button("Get Unlimited") { NSWorkspace.shared.open(checkoutURL) }
                 }
             }
 
@@ -666,15 +667,11 @@ private struct AboutTab: View {
                             license.isWorking
                                 || licenseKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                         )
-
-                    if let checkoutURL = license.checkoutURL {
-                        Button("Get Unlimited") { NSWorkspace.shared.open(checkoutURL) }
-                    }
                 }
             }
         }
-        .padding(13)
-        .background(.quinary, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .padding(12)
+        .background(.quinary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private var licenseSubtitle: String {
@@ -685,7 +682,7 @@ private struct AboutTab: View {
     }
 
     private var updateStatus: some View {
-        HStack(spacing: 8) {
+        VStack(spacing: 8) {
             HStack(spacing: 6) {
                 if case .checking = updater.status {
                     ProgressView().controlSize(.small)
@@ -699,14 +696,12 @@ private struct AboutTab: View {
                     .foregroundStyle(.secondary)
             }
 
-            Spacer(minLength: 0)
-
             Button(updater.hasUpdate ? "Install Update…" : "Check for Updates…") {
                 updater.checkForUpdates()
             }
+            .controlSize(.small)
             .disabled(!updater.canCheck)
         }
-        .padding(.horizontal, 2)
     }
 
     private var icon: String {
