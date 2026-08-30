@@ -177,7 +177,25 @@ final class PaletteController: NSObject, NSWindowDelegate {
         // The app the user is already in never gets an activation event.
         if let front = NSWorkspace.shared.frontmostApplication,
            front.processIdentifier != ProcessInfo.processInfo.processIdentifier {
-            CaretLocator.warmUp(pid: front.processIdentifier)
+            warmAndPrefetch(front)
+        }
+    }
+
+    /// Chromium and Electron expose their focused field shortly after activation.
+    /// Touch the caret once while the user is switching in so the double-tap gets
+    /// a warm accessibility tree. Rapid switches cancel the irrelevant read.
+    private var activationPrefetch: Task<Void, Never>?
+
+    private func warmAndPrefetch(_ app: NSRunningApplication) {
+        CaretLocator.warmUp(pid: app.processIdentifier)
+        activationPrefetch?.cancel()
+        let pid = app.processIdentifier
+        activationPrefetch = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(100))
+            guard !Task.isCancelled,
+                  NSWorkspace.shared.frontmostApplication?.processIdentifier == pid
+            else { return }
+            CaretLocator.prefetchCaret(pid: pid)
         }
     }
 
@@ -185,12 +203,12 @@ final class PaletteController: NSObject, NSWindowDelegate {
         guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
               app.processIdentifier != ProcessInfo.processInfo.processIdentifier
         else { return }
-        CaretLocator.warmUp(pid: app.processIdentifier)
         if app.processIdentifier != targetApp?.processIdentifier {
             showGeneration += 1 // a show still waiting on the old app's caret is moot
             resolution = nil
             if panel.isVisible { dismiss(reactivate: false) }
         }
+        warmAndPrefetch(app)
     }
 
     private var lastToggle: TimeInterval = 0
@@ -240,11 +258,12 @@ final class PaletteController: NSObject, NSWindowDelegate {
     }
 
     /// The palette opened on a fallback. Keep glancing for the real caret and
-    /// settle onto it within the first frames, before the user has read it.
+    /// settle onto it as a cold accessibility tree comes online. Stop as soon as
+    /// the user types so a palette in use never moves underneath them.
     private func settleOntoCaret(pid: pid_t?) async {
         let generation = showGeneration
-        for _ in 0 ..< 4 {
-            try? await Task.sleep(for: .milliseconds(70))
+        for _ in 0 ..< 8 {
+            try? await Task.sleep(for: .milliseconds(75))
             guard generation == showGeneration, panel.isVisible, model.query.isEmpty else { return }
             if let anchor = CaretLocator.caretOnly(for: pid) {
                 BPLog.log("settling onto caret after fallback open")
@@ -260,7 +279,7 @@ final class PaletteController: NSObject, NSWindowDelegate {
         if let resolution, resolution.pid == pid, now - resolution.startedAt < Self.resolutionLifetime {
             return resolution.task
         }
-        let task = Task { @MainActor in await CaretLocator.resolveTarget(for: pid) }
+        let task = Task { @MainActor in CaretLocator.resolveTarget(for: pid) }
         resolution = (pid, task, now)
         return task
     }

@@ -26,9 +26,9 @@ enum CaretLocator {
     /// Anchor plus field hint for `pid`, resolved against its focused element so
     /// both stay valid once the palette itself holds system focus.
     @MainActor
-    static func resolveTarget(for pid: pid_t?) async -> PaletteTarget {
+    static func resolveTarget(for pid: pid_t?) -> PaletteTarget {
         BPLog.log("resolve app=\(NSWorkspace.shared.frontmostApplication?.localizedName ?? "?")")
-        let anchor = await resolveAnchor(for: pid)
+        let anchor = resolveAnchor(for: pid)
         return PaletteTarget(anchor: anchor, fieldHint: fieldHint(for: pid))
     }
 
@@ -38,31 +38,17 @@ enum CaretLocator {
         caretAnchor(pid: pid)
     }
 
-    /// Chromium builds its accessibility tree asynchronously after the nudge, so
-    /// waiting out a grace period beats opening somewhere wrong. The first tap of
-    /// the double-tap starts this, so most of it is spent before the user asks.
-    private static let caretGrace: TimeInterval = 0.6
-    private static let caretPollInterval: TimeInterval = 0.04
-
     @MainActor
-    private static func resolveAnchor(for pid: pid_t?) async -> PaletteAnchor {
+    private static func resolveAnchor(for pid: pid_t?) -> PaletteAnchor {
         if let caret = caretAnchor(pid: pid) { return caret }
 
-        // The grid decision waits for the nudge too: an app whose accessibility
-        // tree hasn't been built yet reports no caret geometry either, and
-        // deciding "this is a terminal" off that would misread a cold Chromium
-        // text box as a character grid.
+        // Ask Chromium/Electron to expose its accessibility tree, then use the
+        // best answer available now. Waiting here makes the palette feel slower
+        // than the gesture; PaletteController keeps checking for the real caret
+        // after the panel is already visible.
         nudgeChromium(pid: pid)
-        let deadline = ProcessInfo.processInfo.systemUptime + caretGrace
-        while ProcessInfo.processInfo.systemUptime < deadline {
-            try? await Task.sleep(for: .seconds(caretPollInterval))
-            if Task.isCancelled { break }
-            if let caret = caretAnchor(pid: pid) {
-                BPLog.log("caret appeared after nudge")
-                return caret
-            }
-        }
-        BPLog.log("no caret within grace period; falling back")
+        if let caret = caretAnchor(pid: pid) { return caret }
+        BPLog.log("caret not immediately available; opening on fallback")
         return fallbackAnchor(pid: pid)
     }
 
@@ -241,6 +227,15 @@ enum CaretLocator {
         let app = appElement(pid)
         AXUIElementSetAttributeValue(app, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
         AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+    }
+
+    /// Touch the focused caret once after an app activates. This prompts lazy
+    /// Chromium/Electron accessibility trees to finish before the user's first
+    /// modifier tap, without caching a field that may change afterward.
+    @MainActor
+    static func prefetchCaret(pid: pid_t) {
+        nudgeChromium(pid: pid)
+        _ = caretAnchor(pid: pid)
     }
 
     /// Words the focused field uses to describe itself (placeholder, title,
