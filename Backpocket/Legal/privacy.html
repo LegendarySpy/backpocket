@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Backpocket Privacy Policy</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      box-sizing: border-box;
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 30px 32px 46px;
+      color: CanvasText;
+      background: Canvas;
+      font: 14px/1.58 -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    h1 { margin: 0 0 4px; font-size: 28px; line-height: 1.2; }
+    h2 { margin: 28px 0 8px; font-size: 17px; line-height: 1.3; }
+    p, ul { margin: 8px 0; }
+    ul { padding-left: 22px; }
+    li + li { margin-top: 5px; }
+    .updated { margin: 0 0 24px; color: GrayText; font-size: 12px; }
+    .summary {
+      padding: 14px 16px;
+      border: 1px solid color-mix(in srgb, CanvasText 14%, transparent);
+      border-radius: 12px;
+      background: color-mix(in srgb, CanvasText 5%, transparent);
+    }
+    a { color: LinkText; }
+  </style>
+</head>
+<body>
+  <h1>Privacy Policy</h1>
+  <p class="updated">Effective August 30, 2026</p>
+
+  <p class="summary"><strong>The short version:</strong> Backpocket does not include analytics, advertising, or crash-reporting services. Your facts are stored on your Mac and, when iCloud sync is enabled, in your private iCloud account. The developer cannot see them.</p>
+
+  <h2>Information stored on your Mac</h2>
+  <p>Backpocket stores the facts you create, their names, whether they are locked, basic usage information used to rank them, app preferences, a random installation identifier, and cached license information. This information is used only to provide the app’s features.</p>
+  <p>Locked fact values are encrypted before they are written to disk. The encryption key is kept in Apple’s Keychain. Ordinary facts are stored as plain text in Backpocket’s Application Support folder, so you should lock values that need additional protection.</p>
+
+  <h2>Accessibility and the clipboard</h2>
+  <p>Backpocket asks for macOS Accessibility access so it can locate the focused text field, read limited context such as its label or placeholder, and insert the fact you choose. This processing happens on your Mac. Backpocket does not send focused-field content or your facts to the developer.</p>
+  <p>When inserting an unlocked fact, Backpocket may briefly place it on the clipboard, perform a paste, and restore the previous clipboard contents. The clipboard is also read when you explicitly use the <code>{clipboard}</code> placeholder. Locked facts are typed without using the clipboard.</p>
+
+  <h2>iCloud sync</h2>
+  <p>If “Sync with iCloud” is enabled, Backpocket sends your saved facts and their local usage metadata through Apple’s iCloud key-value storage so they can appear on your other Macs. Locked values remain encrypted. Fact names and unlocked values are not encrypted by Backpocket before iCloud sync. The developer does not operate this storage or receive its contents. You can turn iCloud sync off in Settings.</p>
+  <p>Apple handles iCloud data under the <a href="https://www.apple.com/legal/privacy/">Apple Privacy Policy</a>.</p>
+
+  <h2>Purchases and license checks</h2>
+  <p>Purchases, receipts, refunds, the customer portal, and license keys are provided by Polar. When you activate or validate a license, Backpocket sends Polar the license key, activation identifier when available, your Mac’s local device name, a random installation identifier, the Backpocket version, and identifiers for the Backpocket product. Polar may associate this with the information supplied at checkout.</p>
+  <p>Polar handles that information under the <a href="https://polar.sh/legal/privacy-policy">Polar Privacy Policy</a>.</p>
+
+  <h2>Updates</h2>
+  <p>Backpocket uses Sparkle to check a public GitHub Pages feed for updates. GitHub and the network providers involved may receive ordinary connection information such as an IP address and user agent. Backpocket does not add your facts or a personal analytics identifier to update requests.</p>
+  <p>GitHub handles connection information under the <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub Privacy Statement</a>.</p>
+
+  <h2>Bug reports and privacy requests</h2>
+  <p>Backpocket does not send bug reports automatically. If you choose “Report a Bug,” the form is hosted by Tally. Tally receives the answers you submit, along with ordinary connection information. Do not include passwords, license keys, or saved fact values in a report.</p>
+  <p>Reports are kept only as long as they are useful for responding to the report, fixing the problem, or meeting legal obligations. You can use the same form and begin the report with “Privacy request” to ask for a submitted report to be corrected or deleted. Tally handles form data under the <a href="https://tally.so/help/privacy-policy">Tally Privacy Policy</a>.</p>
+
+  <h2>What Backpocket does not collect</h2>
+  <p>Backpocket has no product analytics, advertising SDK, behavioral tracking, or automatic crash reporting. The developer does not receive your facts, clipboard contents, Accessibility data, or iCloud records.</p>
+
+  <h2>Children</h2>
+  <p>Backpocket is not directed to children under 13. Do not submit a child’s personal information through the bug-report form.</p>
+
+  <h2>Changes</h2>
+  <p>This policy may be updated when Backpocket’s behavior or service providers change. The effective date above identifies the version of the policy. Each release keeps a bundled copy available in the app.</p>
+
+  <h2>Contact</h2>
+  <p>For a privacy question or request, choose “Report a Bug” in Backpocket’s About page and begin the report with “Privacy request.”</p>
+</body>
+</html>

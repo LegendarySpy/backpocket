@@ -54,6 +54,8 @@
 	<string>$(BACKPOCKET_POLAR_LICENSE_BENEFIT_ID)</string>
 	<key>BackpocketPolarOrganizationID</key>
 	<string>$(BACKPOCKET_POLAR_ORGANIZATION_ID)</string>
+	<key>BackpocketSupportURL</key>
+	<string>$(BACKPOCKET_SUPPORT_URL)</string>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUFeedURL</key>

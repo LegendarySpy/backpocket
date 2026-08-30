@@ -154,3 +154,25 @@ jobs:
             --title "${APP_NAME} ${VERSION}" \
             --notes-file "$NOTES_FILE" \
             --draft
+
+      - name: Publish legal pages
+        env:
+          GH_TOKEN: ${{ secrets.UPDATES_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          SITE_DIR="$RUNNER_TEMP/backpocket-updates"
+          gh repo clone "$UPDATES_REPO" "$SITE_DIR" -- --depth 1 --branch gh-pages
+          cp Backpocket/Legal/privacy.html "$SITE_DIR/privacy.html"
+          cp Backpocket/Legal/terms.html "$SITE_DIR/terms.html"
+          cp Backpocket/Legal/sparkle-license.html "$SITE_DIR/sparkle-license.html"
+
+          cd "$SITE_DIR"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add privacy.html terms.html sparkle-license.html
+          if git diff --cached --quiet; then
+            echo "Legal pages are already up to date."
+          else
+            git commit -m "Update Backpocket legal pages"
+            git push
+          fi

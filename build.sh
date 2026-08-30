@@ -3,9 +3,9 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 xcodebuild -project Backpocket.xcodeproj -scheme Backpocket -configuration Release \
-    -derivedDataPath .build -quiet build
+    -derivedDataPath .build/InstallDerivedData -quiet build
 
-APP=".build/Build/Products/Release/Backpocket.app"
+APP=".build/InstallDerivedData/Build/Products/Release/Backpocket.app"
 pkill -x Backpocket 2>/dev/null || true
 rm -rf /Applications/Backpocket.app
 ditto "$APP" /Applications/Backpocket.app

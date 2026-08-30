@@ -569,6 +569,7 @@ private struct AboutTab: View {
     @ObservedObject private var license = LicenseManager.shared
     @State private var licenseKey = ""
     @State private var isVisible = false
+    @State private var legalDocument: LegalDocument?
 
     private var version: String {
         let short = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
@@ -580,23 +581,29 @@ private struct AboutTab: View {
         VStack(spacing: 0) {
             hero
             updateStatus
-                .padding(.top, 18)
+                .padding(.top, 12)
 
-            Spacer(minLength: 18)
+            Spacer(minLength: 10)
 
             licenseCard
+            legalLinks
+                .padding(.top, 8)
         }
-        .padding(20)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
         .frame(width: 440, height: 360)
         .onAppear { isVisible = true }
         .onDisappear { isVisible = false }
+        .sheet(item: $legalDocument) { document in
+            LegalDocumentView(document: document)
+        }
     }
 
     private var hero: some View {
-        VStack(spacing: 7) {
+        VStack(spacing: 5) {
             Image(nsImage: NSApp.applicationIconImage)
                 .resizable()
-                .frame(width: 72, height: 72)
+                .frame(width: 64, height: 64)
 
             Text("Backpocket")
                 .font(.system(size: 21, weight: .semibold))
@@ -608,7 +615,7 @@ private struct AboutTab: View {
     }
 
     private var licenseCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 Image(systemName: license.state.isLicensed ? "checkmark.seal.fill" : "seal")
                     .foregroundStyle(license.state.isLicensed ? licenseGold : Color.secondary)
@@ -663,7 +670,7 @@ private struct AboutTab: View {
                 }
             }
         }
-        .padding(12)
+        .padding(10)
         .background {
             LicenseCardBackground(
                 isActive: isVisible,
@@ -681,6 +688,35 @@ private struct AboutTab: View {
 
     private var licenseGold: Color {
         Color(red: 0.92, green: 0.58, blue: 0.08)
+    }
+
+    private var legalLinks: some View {
+        HStack(spacing: 7) {
+            Button("Privacy") { legalDocument = .privacy }
+            Text("·")
+            Button("Terms") { legalDocument = .terms }
+            Text("·")
+            Button("Report a Bug") {
+                if let supportURL { NSWorkspace.shared.open(supportURL) }
+            }
+        }
+        .buttonStyle(.plain)
+        .font(.system(size: 10.5))
+        .foregroundStyle(.tertiary)
+    }
+
+    private var supportURL: URL? {
+        guard let value = Bundle.main.object(forInfoDictionaryKey: "BackpocketSupportURL") as? String,
+              !value.isEmpty,
+              !value.hasPrefix("$("),
+              let baseURL = URL(string: value),
+              var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)
+        else { return nil }
+
+        components.queryItems = (components.queryItems ?? []) + [
+            URLQueryItem(name: "version", value: version)
+        ]
+        return components.url
     }
 
     private var updateStatus: some View {

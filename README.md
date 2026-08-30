@@ -2,7 +2,7 @@
 
 Your facts, one double-tap away.
 
-[Download the latest release](https://github.com/LegendarySpy/backpocket-updates/releases/latest/download/Backpocket.dmg) · [View all releases](https://github.com/LegendarySpy/backpocket-updates/releases)
+[Download the latest release](https://github.com/LegendarySpy/backpocket-updates/releases/latest/download/Backpocket.dmg) · [View all releases](https://github.com/LegendarySpy/backpocket-updates/releases) · [Report a bug](https://tally.so/r/D4G2Nb)
 
 Backpocket is a tiny macOS menu bar utility. Double-tap ⌥ Option in any text field and a small Liquid Glass palette appears at your caret. Type a few letters to fuzzy-search your personal facts (email, IBAN, addresses, whatever you retype constantly), press Return, and the value lands in the field you were in.
 
@@ -116,3 +116,12 @@ License keys are stored in Keychain. The app stores only activation/cache
 metadata in `UserDefaults` and refreshes with Polar on launch. A previously
 validated lifetime license remains usable through network or Polar outages;
 an explicit revoked, disabled, expired, or invalid response removes access.
+
+## Privacy and terms
+
+Backpocket has no product analytics, advertising, or automatic crash reporting.
+The app includes its [Privacy Policy](https://legendaryspy.github.io/backpocket-updates/privacy.html)
+and [Terms of Use](https://legendaryspy.github.io/backpocket-updates/terms.html)
+in the About page, where they remain available offline. The Release workflow
+publishes those same bundled documents to the public updates repository for
+checkout and pre-install access.
