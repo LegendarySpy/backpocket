@@ -43,18 +43,4 @@ final class Permissions: ObservableObject {
         )
     }
 
-    /// Which copy is actually running. macOS keys Accessibility approval to a
-    /// specific bundle, so a second copy elsewhere on disk looks approved in
-    /// System Settings while this one stays blocked.
-    var runningBundlePath: String {
-        Bundle.main.bundleURL.path
-    }
-
-    var isRunningFromApplications: Bool {
-        runningBundlePath.hasPrefix("/Applications/")
-    }
-
-    func revealRunningBundle() {
-        NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
-    }
 }

@@ -560,16 +560,6 @@ private struct GeneralTab: View {
                 Text("Needed to find your cursor and type for you. The palette turns on the moment you grant it — no restart.")
             }
 
-            // Approval is tied to one copy of the app, so a second copy on disk is
-            // the usual reason the toggle looks on while this one stays blocked.
-            if !permissions.isRunningFromApplications {
-                LabeledContent {
-                    Button("Show in Finder") { permissions.revealRunningBundle() }
-                } label: {
-                    Text("Already allowed but still blocked?")
-                    Text("Approval follows one copy of the app. This one runs from \(permissions.runningBundlePath) — remove any other Backpocket from the list, then allow this one.")
-                }
-            }
         }
     }
 }
@@ -578,6 +568,7 @@ private struct AboutTab: View {
     @ObservedObject private var updater = Updater.shared
     @ObservedObject private var license = LicenseManager.shared
     @State private var licenseKey = ""
+    @State private var isVisible = false
 
     private var version: String {
         let short = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
@@ -597,6 +588,8 @@ private struct AboutTab: View {
         }
         .padding(20)
         .frame(width: 440, height: 360)
+        .onAppear { isVisible = true }
+        .onDisappear { isVisible = false }
     }
 
     private var hero: some View {
@@ -618,7 +611,7 @@ private struct AboutTab: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
                 Image(systemName: license.state.isLicensed ? "checkmark.seal.fill" : "seal")
-                    .foregroundStyle(license.state.isLicensed ? Color.green : Color.secondary)
+                    .foregroundStyle(license.state.isLicensed ? licenseGold : Color.secondary)
                     .frame(width: 28, height: 28)
                     .background(.quaternary, in: Circle())
 
@@ -671,14 +664,23 @@ private struct AboutTab: View {
             }
         }
         .padding(12)
-        .background(.quinary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background {
+            LicenseCardBackground(
+                isActive: isVisible,
+                isLicensed: license.state.isLicensed
+            )
+        }
     }
 
     private var licenseSubtitle: String {
-        if license.state.isLicensed { return "Unlimited facts unlocked." }
+        if license.state.isLicensed { return "Unlimited facts! Thanks for supporting Backpocket." }
         if case .inactive(let reason) = license.state { return reason }
         if case .validating = license.state { return "Checking license…" }
-        return "Store up to 5 facts free. Unlimited is $5 once."
+        return "You can save 5 facts for free."
+    }
+
+    private var licenseGold: Color {
+        Color(red: 0.92, green: 0.58, blue: 0.08)
     }
 
     private var updateStatus: some View {
@@ -719,5 +721,39 @@ private struct AboutTab: View {
         guard !key.isEmpty else { return }
         license.activate(key: key)
         licenseKey = ""
+    }
+}
+
+private struct LicenseCardBackground: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let isActive: Bool
+    let isLicensed: Bool
+
+    private var sheenColor: Color {
+        if isLicensed {
+            return Color(red: 1.0, green: 0.65, blue: 0.08).opacity(0.22)
+        }
+        return Color.accentColor.opacity(0.14)
+    }
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 24.0, paused: reduceMotion || !isActive)) { timeline in
+            GeometryReader { geometry in
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(.quinary)
+
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(sheenColor)
+                        .colorEffect(
+                            ShaderLibrary.licenseSheen(
+                                .float(Float(timeline.date.timeIntervalSinceReferenceDate
+                                    .truncatingRemainder(dividingBy: 8))),
+                                .float2(geometry.size)
+                            )
+                        )
+                }
+            }
+        }
     }
 }
