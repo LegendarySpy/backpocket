@@ -2,7 +2,9 @@
 
 Your facts, one double-tap away.
 
-Backpocket is a tiny macOS menu bar utility. Double-tap ⌥ Option in any text field and a small Liquid Glass palette appears at your caret. Type a few letters to fuzzy-search your personal facts (email, IBAN, addresses, whatever you retype constantly), press Return, and the value is typed into the field you were in. The clipboard is never touched.
+[Download the latest release](https://github.com/LegendarySpy/backpocket-updates/releases/latest/download/Backpocket.dmg) · [View all releases](https://github.com/LegendarySpy/backpocket-updates/releases)
+
+Backpocket is a tiny macOS menu bar utility. Double-tap ⌥ Option in any text field and a small Liquid Glass palette appears at your caret. Type a few letters to fuzzy-search your personal facts (email, IBAN, addresses, whatever you retype constantly), press Return, and the value lands in the field you were in.
 
 ## Highlights
 
@@ -11,10 +13,11 @@ Backpocket is a tiny macOS menu bar utility. Double-tap ⌥ Option in any text f
 - Fuzzy search across names and values (sensitive values stay unsearchable) with matched-letter highlighting; no match means Return types your query as-is
 - The selected result previews exactly what Return will type, with placeholders resolved and sensitive values masked (configurable: all results, selected only, or off)
 - Quick capture: select text in any app, right-click → Services → Save to Backpocket
-- Keystroke insertion via synthetic typing, so values never enter the clipboard
+- Insertion by transient paste: the value is staged on the pasteboard marked transient and auto-generated (the conventions clipboard managers honour to skip recording), pasted, and your previous contents restored. Locked facts skip the pasteboard entirely and are typed as synthetic keystrokes
+- Locked facts are encrypted at rest with AES-GCM before they touch disk or iCloud; the key lives in the Keychain and rides iCloud Keychain to your other Macs
 - Dynamic placeholders in values and built-in palette results: `{date}`, `{shortdate}`, `{longdate}`, `{time}`, `{datetime}`, `{iso}`, `{timestamp}`, `{clipboard}`, `{username}`, `{fullname}`, `{hostname}`, `{app}`, `{uuid}`, or offset/formatted dates like `{date:+7:MMM d}`
 - iCloud sync for your saved facts across Macs signed into the same Apple Account
-- Free for up to 5 saved facts; a one-time license unlocks unlimited facts
+- Free for up to 5 saved facts; a $5 one-time license unlocks unlimited facts
 - One permission: Accessibility (to find your caret and type for you)
 - Configurable trigger (double-tap ⌥ ⌃ ⌘ or ⇧), launch at login, native tabbed Settings
 
@@ -53,6 +56,7 @@ The release workflow expects these source-repo secrets:
 
 - `MACOS_CERTIFICATE_BASE64`: Developer ID Application `.p12`, base64 encoded
 - `MACOS_CERTIFICATE_PASSWORD`: password for the `.p12`
+- `MACOS_PROVISIONING_PROFILE_BASE64`: Developer ID provisioning profile for `com.backpocket.mac` with iCloud enabled, base64 encoded
 - `KEYCHAIN_PASSWORD`: temporary CI keychain password
 - `APPLE_ID`: Apple ID used for notarization
 - `APPLE_APP_SPECIFIC_PASSWORD`: app-specific password for notarization
@@ -71,11 +75,20 @@ Export the Sparkle private key for the GitHub secret with:
 
 Do not commit the exported private key.
 
+## Icons
+
+`Icon/icon.icon` is the app icon and is compiled directly by Xcode. The approved
+SVG layers are also kept in `Icon/AppIcon-Layers`. `Icon/tray.png` is the
+separate menu-bar source. Rebuild its template image set with ImageMagick:
+
+```sh
+./scripts/build_icons.sh
+```
+
 ## Licensing
 
-Backpocket validates Polar license keys from the app using Polar's public
-Customer Portal license-key endpoints. Configure these build settings before a
-paid release:
+Backpocket can validate Polar license keys using Polar's public Customer Portal
+license-key endpoints. These build settings configure that:
 
 - `BACKPOCKET_POLAR_ORGANIZATION_ID`: Polar organization UUID
 - `BACKPOCKET_POLAR_LICENSE_BENEFIT_ID`: Backpocket license-key benefit UUID
@@ -100,5 +113,6 @@ saved facts. Extra facts are preserved locally if a license is removed, but only
 the first 5 are available in the palette until the license is restored.
 
 License keys are stored in Keychain. The app stores only activation/cache
-metadata in `UserDefaults`, refreshes with Polar on launch, and allows a short
-offline grace period after the last successful validation.
+metadata in `UserDefaults` and refreshes with Polar on launch. A previously
+validated lifetime license remains usable through network or Polar outages;
+an explicit revoked, disabled, expired, or invalid response removes access.

@@ -14,6 +14,9 @@ mkdir -p "$DMG_ROOT"
 cp -R "$APP_PATH" "$DMG_ROOT/"
 ln -s /Applications "$DMG_ROOT/Applications"
 
+ICON_NAME="$(plutil -extract CFBundleIconFile raw "$APP_PATH/Contents/Info.plist" 2>/dev/null || true)"
+VOLUME_ICON="$APP_PATH/Contents/Resources/${ICON_NAME%.icns}.icns"
+
 hdiutil create -volname "$APP_NAME" -srcfolder "$DMG_ROOT" -fs HFS+ \
     -format UDRW -ov -quiet "$RW_DMG"
 
@@ -42,6 +45,14 @@ tell application "Finder"
     end tell
 end tell
 EOF
+
+# Finder can recreate the volume metadata while arranging the window, so apply
+# the compiled app icon after the layout is finalized.
+if [[ -f "$VOLUME_ICON" ]]; then
+    cp "$VOLUME_ICON" "$MOUNT_DIR/.VolumeIcon.icns"
+    SetFile -c icnC "$MOUNT_DIR/.VolumeIcon.icns" 2>/dev/null || true
+    SetFile -a C "$MOUNT_DIR" 2>/dev/null || true
+fi
 
 sync
 hdiutil detach "$MOUNT_DIR" -quiet

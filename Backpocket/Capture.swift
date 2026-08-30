@@ -31,7 +31,13 @@ final class CaptureService: NSObject {
         }
 
         Task { @MainActor in
-            let fact = FactStore.shared.captured(text)
+            guard let fact = FactStore.shared.captured(
+                text,
+                unlimited: LicenseManager.shared.state.isLicensed
+            ) else {
+                AppDelegate.shared?.showLicenseSettings()
+                return
+            }
             CaptureService.pendingFocusID = fact.id
             NotificationCenter.default.post(name: .factCaptured, object: nil)
             AppDelegate.shared?.showSettings()

@@ -25,9 +25,8 @@ struct PaletteView: View {
         )
         .animation(.smooth(duration: 0.18), value: model.results)
         .animation(.smooth(duration: 0.15), value: model.selection)
-        .onAppear {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { focused = true }
-        }
+        .onAppear { focused = true }
+        .onChange(of: model.focusToken) { focused = true }
         .onChange(of: model.query) { model.selection = 0 }
     }
 

@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Eleven individually drawn stitches follow the hem curve. Explicit,
+       mirrored segments keep the spacing and end treatment visually balanced. -->
+  <g fill="none" stroke="#F6BB4B" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M290 483.0Q302 485.7 314 488.3"/>
+    <path d="M332 492.0Q344 494.1 356 496.2"/>
+    <path d="M374 499.0Q386 500.6 398 502.2"/>
+    <path d="M416 504.2Q428 505.3 440 506.3"/>
+    <path d="M458 507.5Q470 508.1 482 508.6"/>
+    <path d="M500 508.9Q512 509.1 524 508.9"/>
+    <path d="M542 508.6Q554 508.1 566 507.5"/>
+    <path d="M584 506.3Q596 505.3 608 504.2"/>
+    <path d="M626 502.2Q638 500.6 650 499.0"/>
+    <path d="M668 496.2Q680 494.1 692 492.0"/>
+    <path d="M710 488.3Q722 485.7 734 483.0"/>
+    <path d="M300 524
+             L322 676
+             Q327 706 353 722
+             L484 806
+             Q512 824 512 824"
+          stroke-dasharray="20 18"/>
+    <path d="M724 524
+             L702 676
+             Q697 706 671 722
+             L540 806
+             Q512 824 512 824"
+          stroke-dasharray="20 18"/>
+  </g>
+</svg>

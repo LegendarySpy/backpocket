@@ -3,25 +3,49 @@ import CoreGraphics
 import Foundation
 
 enum Typer {
-    /// Types text into the focused field via synthetic key events. Nothing
-    /// touches the clipboard. Each event carries the real keycode + modifiers
-    /// from the current keyboard layout so keycode-translating apps (terminals)
-    /// read it correctly, plus the unicode payload for everything else.
-    static func type(_ text: String) {
-        let layout = KeyLayout.current()
-        let source = CGEventSource(stateID: .hidSystemState)
-        for character in text {
-            let stroke = layout?.stroke(for: character)
-            let units = Array(String(character).utf16)
+    private static let queue = DispatchQueue(label: "com.backpocket.typing", qos: .userInitiated)
+
+    /// Presses ⌘V with the keycode that actually carries "v" on the active
+    /// layout. Used for staged pasteboard inserts; the fallback matches ANSI.
+    static func pressCommandV() {
+        let stroke = KeyLayout.current()?.stroke(for: "v")
+        let keyCode = stroke?.flags.isEmpty == true ? stroke!.keyCode : CGKeyCode(kVK_ANSI_V)
+        queue.async {
+            let source = CGEventSource(stateID: .hidSystemState)
             for keyDown in [true, false] {
                 guard let event = CGEvent(
-                    keyboardEventSource: source, virtualKey: stroke?.keyCode ?? 0, keyDown: keyDown
+                    keyboardEventSource: source, virtualKey: keyCode, keyDown: keyDown
                 ) else { continue }
-                event.flags = stroke?.flags ?? []
-                event.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units)
+                event.flags = .maskCommand
                 event.post(tap: .cghidEventTap)
             }
-            usleep(1500)
+        }
+    }
+
+    /// Types text into the focused field via synthetic key events. Reserved for
+    /// values that must not transit the pasteboard, and for fields that take no
+    /// paste. Each event carries the real keycode + modifiers
+    /// from the current keyboard layout so keycode-translating apps (terminals)
+    /// read it correctly, plus the unicode payload for everything else.
+    /// The layout is read on the caller's thread; the paced posting is not, so a
+    /// long value never stalls the UI.
+    static func type(_ text: String) {
+        let layout = KeyLayout.current()
+        queue.async {
+            let source = CGEventSource(stateID: .hidSystemState)
+            for character in text {
+                let stroke = layout?.stroke(for: character)
+                let units = Array(String(character).utf16)
+                for keyDown in [true, false] {
+                    guard let event = CGEvent(
+                        keyboardEventSource: source, virtualKey: stroke?.keyCode ?? 0, keyDown: keyDown
+                    ) else { continue }
+                    event.flags = stroke?.flags ?? []
+                    event.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units)
+                    event.post(tap: .cghidEventTap)
+                }
+                usleep(1500)
+            }
         }
     }
 }

@@ -1,0 +1,54 @@
+{
+  "fill" : {
+    "automatic-gradient" : "extended-srgb:0.00000,0.53333,1.00000,1.00000"
+  },
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "glass" : false,
+          "image-name" : "05-stitching 2.svg",
+          "name" : "05-stitching 2"
+        },
+        {
+          "image-name" : "04-pocket 2.svg",
+          "name" : "04-pocket 2"
+        },
+        {
+          "glass" : true,
+          "image-name" : "03-card-front.svg",
+          "name" : "03-card-front"
+        },
+        {
+          "image-name" : "02-card-right.svg",
+          "name" : "02-card-right",
+          "position" : {
+            "scale" : 1,
+            "translation-in-points" : [
+              -9.198017502152652,
+              3.502982345027533
+            ]
+          }
+        },
+        {
+          "image-name" : "01-card-left.svg",
+          "name" : "01-card-left"
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.6
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.2
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}

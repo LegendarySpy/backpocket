@@ -7,122 +7,153 @@ struct PaletteAnchor {
     let fromCaret: Bool     // anchored to real caret geometry, not a fallback
 }
 
+/// Everything the palette reads out of the target app, gathered in one pass so
+/// showing it never has to touch accessibility again.
+struct PaletteTarget {
+    let anchor: PaletteAnchor
+    let fieldHint: String?
+}
+
 enum CaretLocator {
-    /// Anchor for the palette, resolved against `pid`'s focused element so it
-    /// stays valid even once the palette itself holds system focus.
-    /// Order: caret bounds -> focused element's frame -> mouse.
-    static func anchor(for pid: pid_t?) -> PaletteAnchor {
+    /// Nothing may block the main thread waiting on another process: a busy app
+    /// would otherwise stall the trigger for the system default (6s).
+    static let messagingTimeout: Float = 0.25
+
+    static func installMessagingTimeout() {
+        AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), messagingTimeout)
+    }
+
+    /// Anchor plus field hint for `pid`, resolved against its focused element so
+    /// both stay valid once the palette itself holds system focus.
+    @MainActor
+    static func resolveTarget(for pid: pid_t?) async -> PaletteTarget {
+        BPLog.log("resolve app=\(NSWorkspace.shared.frontmostApplication?.localizedName ?? "?")")
+        let anchor = await resolveAnchor(for: pid)
+        return PaletteTarget(anchor: anchor, fieldHint: fieldHint(for: pid))
+    }
+
+    /// A caret, or nothing. Used to settle onto the real caret when the palette
+    /// had to open on a fallback.
+    static func caretOnly(for pid: pid_t?) -> PaletteAnchor? {
+        caretAnchor(pid: pid)
+    }
+
+    /// Chromium builds its accessibility tree asynchronously after the nudge, so
+    /// waiting out a grace period beats opening somewhere wrong. The first tap of
+    /// the double-tap starts this, so most of it is spent before the user asks.
+    private static let caretGrace: TimeInterval = 0.6
+    private static let caretPollInterval: TimeInterval = 0.04
+
+    @MainActor
+    private static func resolveAnchor(for pid: pid_t?) async -> PaletteAnchor {
         if let caret = caretAnchor(pid: pid) { return caret }
+
+        // The grid decision waits for the nudge too: an app whose accessibility
+        // tree hasn't been built yet reports no caret geometry either, and
+        // deciding "this is a terminal" off that would misread a cold Chromium
+        // text box as a character grid.
         nudgeChromium(pid: pid)
-        if let caret = caretAnchor(pid: pid) { return caret }
+        let deadline = ProcessInfo.processInfo.systemUptime + caretGrace
+        while ProcessInfo.processInfo.systemUptime < deadline {
+            try? await Task.sleep(for: .seconds(caretPollInterval))
+            if Task.isCancelled { break }
+            if let caret = caretAnchor(pid: pid) {
+                BPLog.log("caret appeared after nudge")
+                return caret
+            }
+        }
+        BPLog.log("no caret within grace period; falling back")
         return fallbackAnchor(pid: pid)
     }
 
-    /// Like `anchor(for:)`, but with a short grace period: Chromium builds its
-    /// accessibility tree asynchronously after the nudge, and waiting a few
-    /// beats for the caret beats showing the palette somewhere it doesn't belong.
-    @MainActor
-    static func resolveAnchor(for pid: pid_t?, completion: @escaping @MainActor (PaletteAnchor) -> Void) {
-        BPLog.log("app=\(NSWorkspace.shared.frontmostApplication?.localizedName ?? "?") mouse=\(NSEvent.mouseLocation)")
-        if let caret = caretAnchor(pid: pid) {
-            completion(caret)
-            return
-        }
-        // Polling exists for Chromium's async tree; a terminal never grows a caret.
-        if isTerminal(pid) {
-            completion(fallbackAnchor(pid: pid))
-            return
-        }
-        nudgeChromium(pid: pid)
-        pollForCaret(pid: pid, attempt: 1, completion: completion)
-    }
-
-    private static let pollAttempts = 5
-    private static let pollInterval: TimeInterval = 0.05
-
-    @MainActor
-    private static func pollForCaret(
-        pid: pid_t?, attempt: Int, completion: @escaping @MainActor (PaletteAnchor) -> Void
-    ) {
-        if let caret = caretAnchor(pid: pid) {
-            BPLog.log("caret appeared on poll \(attempt)")
-            completion(caret)
-            return
-        }
-        guard attempt < pollAttempts else {
-            BPLog.log("no caret after \(attempt) polls; falling back")
-            completion(fallbackAnchor(pid: pid))
-            return
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + pollInterval) {
-            pollForCaret(pid: pid, attempt: attempt + 1, completion: completion)
-        }
-    }
-
     private static func fallbackAnchor(pid: pid_t?) -> PaletteAnchor {
-        if isTerminal(pid), let anchor = terminalAnchor(pid: pid) { return anchor }
-        let mouse = NSEvent.mouseLocation
-        if let element = focusedElement(pid: pid),
-           let frame = elementFrame(of: element).map(convert) {
-            BPLog.log("elementFrame converted=\(frame) onScreen=\(isOnScreen(frame))")
-            if isOnScreen(frame) {
-                // A huge focused element (web area, canvas) says nothing about
-                // where the user is looking; the mouse is the better guess.
-                if frame.height > 200 {
-                    return PaletteAnchor(rect: pointRect(mouse), alignmentX: mouse.x, fromCaret: false)
+        if let element = focusedElement(pid: pid) {
+            if let grid = gridAnchor(of: element, pid: pid) { return grid }
+            if let frame = elementFrame(of: element).map(convert), isOnScreen(frame) {
+                BPLog.log("fallback=elementFrame \(frame)")
+                // A huge focused element (web area, terminal, canvas) says
+                // nothing about where in itself the user is looking, so it gets
+                // the same treatment as the window: hug its bottom-left corner.
+                if frame.height <= 200 {
+                    return PaletteAnchor(rect: frame, alignmentX: frame.minX, fromCaret: false)
                 }
-                return PaletteAnchor(rect: frame, alignmentX: frame.minX, fromCaret: false)
+                return bottomLeftAnchor(of: frame)
             }
-        } else {
-            BPLog.log("elementFrame unavailable")
         }
-        BPLog.log("fallback=mouse")
-        return PaletteAnchor(rect: pointRect(mouse), alignmentX: mouse.x, fromCaret: false)
+        return bottomLeftAnchor(of:
+            focusedWindowFrame(pid: pid)
+                ?? NSScreen.main?.visibleFrame
+                ?? NSScreen.screens[0].visibleFrame
+        )
+    }
+
+    /// Last resort, and never the pointer: a palette that lands wherever the
+    /// mouse happens to rest reads as a bug, and moves between two otherwise
+    /// identical triggers. A corner of the thing being typed into is at least
+    /// the same place every time.
+    private static func bottomLeftAnchor(of frame: NSRect) -> PaletteAnchor {
+        let inset: CGFloat = 26
+        let rect = NSRect(x: frame.minX + inset, y: frame.minY + inset, width: 2, height: 18)
+        BPLog.log("fallback=bottom-left of \(frame) -> \(rect)")
+        return PaletteAnchor(rect: rect, alignmentX: rect.minX, fromCaret: false)
     }
 
     // MARK: - Terminals
 
-    private static let terminalBundleIDs: Set<String> = [
-        "com.apple.Terminal", "com.googlecode.iterm2", "com.mitchellh.ghostty",
-        "net.kovidgoyal.kitty", "org.alacritty", "com.github.wez.wezterm",
-        "dev.warp.Warp-Stable",
-    ]
-
-    private static func isTerminal(_ pid: pid_t?) -> Bool {
-        guard let pid, let bundleID = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier else {
-            return false
-        }
-        return terminalBundleIDs.contains(bundleID)
-    }
-
     /// GPU terminals answer no bounds-for-range (ghostty#9932, planned for 1.4),
     /// but their visible text plus the content frame is a character grid, and
-    /// typing lands at the end of the bottom-most prompt-shaped line.
-    private static func terminalAnchor(pid: pid_t?) -> PaletteAnchor? {
-        let element = focusedElement(pid: pid)
-        let frame = element.flatMap { elementFrame(of: $0).map(convert) } ?? focusedWindowFrame(pid: pid)
-        // Small focused elements (Warp's input block) do better on the generic path.
-        guard let frame, isOnScreen(frame), frame.height > 200 else { return nil }
-        guard let element, let text = stringValue(of: element),
-              let anchor = gridAnchor(text: text, frame: frame, pid: pid) else {
-            BPLog.log("terminal fallback=frame bottom-left frame=\(frame)")
-            let cell = pid.flatMap { measuredCells[$0]?.height } ?? 17
-            let rect = NSRect(x: frame.minX, y: frame.minY, width: 2, height: cell)
-            return PaletteAnchor(rect: rect, alignmentX: rect.minX, fromCaret: false)
-        }
-        return anchor
+    /// typing lands at the end of the bottom-most prompt-shaped line. Recognised
+    /// by that shape rather than by bundle ID, so any terminal qualifies.
+    private static func gridAnchor(of element: AXUIElement, pid: pid_t?) -> PaletteAnchor? {
+        guard !answersCaretGeometry(element),
+              let frame = elementFrame(of: element).map(convert),
+              isOnScreen(frame), frame.height > 200,
+              let text = stringValue(of: element)
+        else { return nil }
+        return gridAnchor(text: text, frame: frame, pid: pid)
+    }
+
+    /// Whether the element can answer caret geometry at all. One that cannot is a
+    /// character grid; one that can is a document that merely declined this time.
+    /// That capability, not the content, is what separates a terminal from a text
+    /// file whose last line happens to begin with `#` or `>`.
+    private static func answersCaretGeometry(_ element: AXUIElement) -> Bool {
+        var names: CFArray?
+        guard AXUIElementCopyParameterizedAttributeNames(element, &names) == .success,
+              let names = names as? [String]
+        else { return true } // unknown: stay off the grid path
+        return names.contains(kAXBoundsForRangeParameterizedAttribute as String)
     }
 
     private static let promptGlyphs: Set<Character> = ["❯", "›", ">", "$", "%", "#", "➜", "→", "λ"]
+
+    /// Full-screen TUIs frame their input line in box drawing, so the prompt sits
+    /// inside the border rather than at either end of the row.
+    private static func promptCore(of line: String) -> String {
+        line.trimmingCharacters(in: .whitespaces)
+            .trimmingCharacters(in: boxDrawing)
+            .trimmingCharacters(in: .whitespaces)
+    }
+
+    private static let boxDrawing: CharacterSet = {
+        var set = CharacterSet(charactersIn: UnicodeScalar(0x2500)! ... UnicodeScalar(0x257F)!)
+        set.insert(charactersIn: "|")
+        return set
+    }()
 
     /// Cell sizes measured from moments the buffer spanned the grid, remembered
     /// per process so short buffers (a fresh prompt) reuse real geometry.
     private static var measuredCells: [pid_t: CGSize] = [:]
 
+    /// Widest line seen per process, so one wide moment teaches the column width
+    /// for every quiet prompt afterwards. Tied to the width it was seen at, since
+    /// resizing the window rewrites how many columns there are.
+    private static var observedColumns: [pid_t: (frameWidth: CGFloat, columns: Int)] = [:]
+
     private static func gridAnchor(text: String, frame: NSRect, pid: pid_t?) -> PaletteAnchor? {
         let lines = text.components(separatedBy: "\n")
         guard let row = lines.lastIndex(where: { line in
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            let trimmed = promptCore(of: line)
             guard let first = trimmed.first, let last = trimmed.last else { return false }
             return promptGlyphs.contains(first) || promptGlyphs.contains(last)
         }) else { return nil }
@@ -131,18 +162,31 @@ enum CaretLocator {
 
         // When the buffer fills the grid the division is an exact measurement
         // of the cell height; a short buffer reuses the last measurement.
+        // A terminal reports only the rows it has used, so a fresh prompt yields
+        // a spacing far larger than any cell; that measurement is discarded
+        // rather than disqualifying, and the last real one is reused.
         let naturalHeight = frame.height / CGFloat(lines.count)
         if (8 ... 40).contains(naturalHeight) { measured.height = naturalHeight }
         let cell = measured.height > 0 ? measured.height : 17
 
         // Same for width: trust it only when the longest line spans the grid,
-        // which a monospace width-to-height ratio confirms.
-        let columns = lines.lazy.map(\.count).max() ?? 0
+        // which a monospace width-to-height ratio confirms. The widest line ever
+        // seen from this process is kept, because a shell prompt on its own never
+        // spans the grid — but anything it has printed once may have, and that
+        // measurement stays true for as long as the window keeps its size.
+        var columns = lines.lazy.map(\.count).max() ?? 0
+        if let pid {
+            if let seen = observedColumns[pid], seen.frameWidth == frame.width {
+                columns = max(columns, seen.columns)
+            }
+            observedColumns[pid] = (frame.width, columns)
+        }
         let naturalWidth = frame.width / CGFloat(max(columns, 1))
         if naturalWidth > cell * 0.3, naturalWidth < cell * 0.8 { measured.width = naturalWidth }
         if let pid, measured != .zero {
             measuredCells[pid] = measured
             measuredCells = measuredCells.filter { NSRunningApplication(processIdentifier: $0.key) != nil }
+            observedColumns = observedColumns.filter { NSRunningApplication(processIdentifier: $0.key) != nil }
         }
 
         // Shorter than the grid the buffer hangs from the top, longer only the
@@ -178,9 +222,15 @@ enum CaretLocator {
         guard let pid else { return nil }
         var ref: CFTypeRef?
         guard AXUIElementCopyAttributeValue(
-            AXUIElementCreateApplication(pid), kAXFocusedWindowAttribute as CFString, &ref
+            appElement(pid), kAXFocusedWindowAttribute as CFString, &ref
         ) == .success, let raw = ref, CFGetTypeID(raw) == AXUIElementGetTypeID() else { return nil }
         return elementFrame(of: raw as! AXUIElement).map(convert)
+    }
+
+    private static func appElement(_ pid: pid_t) -> AXUIElement {
+        let element = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(element, messagingTimeout)
+        return element
     }
 
     /// Warming an app when it activates means its lazy Chromium accessibility
@@ -188,7 +238,7 @@ enum CaretLocator {
     /// the flag Chrome honors, AXManualAccessibility the Electron one; both are
     /// inert everywhere else.
     static func warmUp(pid: pid_t) {
-        let app = AXUIElementCreateApplication(pid)
+        let app = appElement(pid)
         AXUIElementSetAttributeValue(app, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
         AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
     }
@@ -256,11 +306,7 @@ enum CaretLocator {
     }
 
     private static func rangeCaretRect(of element: AXUIElement) -> CGRect? {
-        var rangeRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &rangeRef) == .success,
-              let rangeValue = rangeRef, CFGetTypeID(rangeValue) == AXValueGetTypeID() else { return nil }
-        var selection = CFRange()
-        guard AXValueGetValue((rangeValue as! AXValue), .cfRange, &selection) else { return nil }
+        guard let selection = selectedRange(of: element) else { return nil }
 
         // A live selection's bounds span the whole selection; the insertion point
         // is the collapsed range at its start. Some apps return nothing for
@@ -270,18 +316,54 @@ enum CaretLocator {
             CFRange(location: max(selection.location - 1, 0), length: 1),
             selection,
         ]
-        for var candidate in candidates {
-            guard let candidateValue = AXValueCreate(.cfRange, &candidate) else { continue }
-            var boundsRef: CFTypeRef?
-            guard AXUIElementCopyParameterizedAttributeValue(
-                element, kAXBoundsForRangeParameterizedAttribute as CFString, candidateValue, &boundsRef
-            ) == .success, let boundsValue = boundsRef, CFGetTypeID(boundsValue) == AXValueGetTypeID() else { continue }
-            var rect = CGRect.zero
-            guard AXValueGetValue((boundsValue as! AXValue), .cgRect, &rect),
-                  rect.origin != .zero, rect.height > 0 else { continue }
-            return rect
+        for candidate in candidates {
+            if let rect = boundsForRange(candidate, of: element) { return rect }
         }
-        return nil
+        return linePrefixCaretRect(of: element, selection: selection)
+    }
+
+    /// Editors that answer no bounds for a bare insertion point still answer for
+    /// the text before it on its own line; that run's trailing edge is the caret.
+    private static func linePrefixCaretRect(of element: AXUIElement, selection: CFRange) -> CGRect? {
+        var lineRef: CFTypeRef?
+        guard AXUIElementCopyParameterizedAttributeValue(
+            element, kAXLineForIndexParameterizedAttribute as CFString,
+            selection.location as CFNumber, &lineRef
+        ) == .success, let line = lineRef as? Int else { return nil }
+
+        var rangeRef: CFTypeRef?
+        guard AXUIElementCopyParameterizedAttributeValue(
+            element, kAXRangeForLineParameterizedAttribute as CFString, line as CFNumber, &rangeRef
+        ) == .success, let raw = rangeRef, CFGetTypeID(raw) == AXValueGetTypeID() else { return nil }
+        var lineRange = CFRange()
+        guard AXValueGetValue((raw as! AXValue), .cfRange, &lineRange) else { return nil }
+
+        let prefix = CFRange(location: lineRange.location, length: selection.location - lineRange.location)
+        guard prefix.length > 0, let rect = boundsForRange(prefix, of: element) else { return nil }
+        BPLog.log("caret from line prefix line=\(line) rect=\(rect)")
+        return CGRect(x: rect.maxX, y: rect.minY, width: 2, height: rect.height)
+    }
+
+    private static func selectedRange(of element: AXUIElement) -> CFRange? {
+        var rangeRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &rangeRef) == .success,
+              let rangeValue = rangeRef, CFGetTypeID(rangeValue) == AXValueGetTypeID() else { return nil }
+        var selection = CFRange()
+        guard AXValueGetValue((rangeValue as! AXValue), .cfRange, &selection) else { return nil }
+        return selection
+    }
+
+    private static func boundsForRange(_ range: CFRange, of element: AXUIElement) -> CGRect? {
+        var range = range
+        guard let rangeValue = AXValueCreate(.cfRange, &range) else { return nil }
+        var boundsRef: CFTypeRef?
+        guard AXUIElementCopyParameterizedAttributeValue(
+            element, kAXBoundsForRangeParameterizedAttribute as CFString, rangeValue, &boundsRef
+        ) == .success, let boundsValue = boundsRef, CFGetTypeID(boundsValue) == AXValueGetTypeID() else { return nil }
+        var rect = CGRect.zero
+        guard AXValueGetValue((boundsValue as! AXValue), .cgRect, &rect),
+              rect.origin != .zero, rect.height > 0 else { return nil }
+        return rect
     }
 
     /// Rich web editors sometimes answer WebKit-style text markers when
@@ -322,7 +404,7 @@ enum CaretLocator {
     /// is known. Asking the app directly keeps working after the palette panel
     /// takes system focus.
     private static func focusedElement(pid: pid_t?) -> AXUIElement? {
-        let container = pid.map { AXUIElementCreateApplication($0) } ?? AXUIElementCreateSystemWide()
+        let container = pid.map { appElement($0) } ?? AXUIElementCreateSystemWide()
         var focusedRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(
             container, kAXFocusedUIElementAttribute as CFString, &focusedRef
@@ -339,6 +421,38 @@ enum CaretLocator {
         return element
     }
 
+    // MARK: - Insertion
+
+    /// Writes `value` straight into the focused field, with no pasteboard and no
+    /// synthetic keystrokes. Returns false when the write can't be *proven* to
+    /// have landed, so the caller can type instead.
+    ///
+    /// Proof is required because Chromium reports the attribute settable, accepts
+    /// the write, returns success, and changes nothing. Trusting that would drop
+    /// the value silently; typing after an unnoticed success would insert it twice.
+    @MainActor
+    static func insertText(_ value: String, pid: pid_t?) async -> Bool {
+        guard let element = focusedElement(pid: pid) else { return false }
+        // Nothing to compare against (secure fields, Zed) means no proof is possible.
+        guard let before = stringValue(of: element) else {
+            BPLog.log("insert: field is unreadable, not risking an unverifiable write")
+            return false
+        }
+        guard AXUIElementSetAttributeValue(
+            element, kAXSelectedTextAttribute as CFString, value as CFTypeRef
+        ) == .success else { return false }
+
+        for _ in 0 ..< 8 {
+            try? await Task.sleep(for: .milliseconds(25))
+            if let after = stringValue(of: element), after != before {
+                BPLog.log("insert: landed via accessibility")
+                return true
+            }
+        }
+        BPLog.log("insert: accessibility write claimed success but changed nothing; typing instead")
+        return false
+    }
+
     /// Chromium/Electron apps expose caret geometry only after being asked nicely.
     private static func nudgeChromium(pid: pid_t?) {
         guard let pid = pid ?? NSWorkspace.shared.frontmostApplication?.processIdentifier else { return }
@@ -353,9 +467,5 @@ enum CaretLocator {
 
     private static func isOnScreen(_ rect: NSRect) -> Bool {
         NSScreen.screens.contains { $0.frame.intersects(rect) }
-    }
-
-    private static func pointRect(_ point: CGPoint) -> NSRect {
-        NSRect(x: point.x, y: point.y, width: 1, height: 1)
     }
 }

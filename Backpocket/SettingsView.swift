@@ -73,8 +73,21 @@ final class AppSettings: ObservableObject {
 struct SettingsRootView: View {
     private enum Tab { case facts, general, about }
     @State private var selection = Tab.facts
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
 
     var body: some View {
+        if hasCompletedOnboarding {
+            tabs
+        } else {
+            OnboardingView {
+                withAnimation { hasCompletedOnboarding = true }
+            }
+            // Only while onboarding: the tabs want their native title back.
+            .background(CleanTitlebar())
+        }
+    }
+
+    private var tabs: some View {
         TabView(selection: $selection) {
             FactsTab()
                 .tabItem { Label("Facts", systemImage: "person.text.rectangle") }
@@ -89,9 +102,40 @@ struct SettingsRootView: View {
         .onReceive(NotificationCenter.default.publisher(for: .factCaptured)) { _ in
             selection = .facts
         }
+        .onReceive(NotificationCenter.default.publisher(for: .licenseRequired)) { _ in
+            selection = .about
+        }
         .onAppear {
             if CaptureService.pendingFocusID != nil { selection = .facts }
         }
+    }
+}
+
+/// Traffic lights only: no rule across the top and no "Backpocket Settings"
+/// caption competing with the step's own heading.
+private struct CleanTitlebar: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async { apply(to: view.window) }
+        return view
+    }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        apply(to: view.window)
+    }
+
+    /// Onboarding hands the same window over to the tabs, which do want their
+    /// title, so the change has to be undone rather than left behind.
+    static func dismantleNSView(_ view: NSView, coordinator: ()) {
+        guard let window = view.window else { return }
+        window.titleVisibility = .visible
+        window.titlebarAppearsTransparent = false
+    }
+
+    private func apply(to window: NSWindow?) {
+        guard let window else { return }
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
     }
 }
 
@@ -100,16 +144,17 @@ private struct FactsTab: View {
     @ObservedObject private var license = LicenseManager.shared
     @FocusState private var focusedFact: UUID?
     @State private var showingPlaceholderHelp = false
-
-    private var isAtFreeLimit: Bool {
-        !license.state.isLicensed && store.facts.count >= LicenseManager.freeFactLimit
-    }
+    @State private var backupFailure: String?
 
     private var hasEmptyFact: Bool {
         store.facts.contains {
             $0.name.trimmingCharacters(in: .whitespaces).isEmpty &&
             $0.value.trimmingCharacters(in: .whitespaces).isEmpty
         }
+    }
+
+    private var isAtFreeLimit: Bool {
+        !license.state.isLicensed && store.storedFactCount >= LicenseManager.freeFactLimit
     }
 
     var body: some View {
@@ -121,11 +166,15 @@ private struct FactsTab: View {
                             FactRow(
                                 fact: $fact,
                                 focus: $focusedFact,
-                                isPlanLocked: isPlanLocked(fact)
+                                isPlanLocked: !store.isAvailable(fact, unlimited: license.state.isLicensed)
                             ) {
                                 withAnimation { store.remove(fact.id) }
                             }
                             .id(fact.id)
+                        }
+
+                        if store.facts.isEmpty {
+                            EmptyFacts()
                         }
                     }
                     .padding(14)
@@ -136,30 +185,51 @@ private struct FactsTab: View {
                 }
             }
 
+            if let failure = store.saveFailure ?? backupFailure {
+                FailureBanner(message: failure) {
+                    backupFailure = nil
+                }
+            }
+
             Divider()
 
             HStack {
                 Button {
-                    let fact = store.add()
-                    focusedFact = fact.id
+                    if let fact = store.add(unlimited: license.state.isLicensed) {
+                        focusedFact = fact.id
+                    }
                 } label: {
                     Label("Add Fact", systemImage: "plus")
                 }
                 .disabled(hasEmptyFact || isAtFreeLimit)
 
                 if isAtFreeLimit {
-                    Text("Free limit reached")
+                    Text("5 fact limit")
                         .font(.system(size: 11.5))
                         .foregroundStyle(.secondary)
 
-                    if let checkoutURL = license.checkoutURL {
-                        Button("Unlock") {
-                            NSWorkspace.shared.open(checkoutURL)
-                        }
+                    Button("Unlock") {
+                        NotificationCenter.default.post(name: .licenseRequired, object: nil)
                     }
                 }
 
+                Menu {
+                    Button("Export Facts…") {
+                        Backup.export(store.facts) { backupFailure = $0 }
+                    }
+                    Button("Import Facts…") {
+                        Backup.restore(into: store) { backupFailure = $0 }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("Export or import your facts")
+
                 Spacer()
+
                 Button {
                     showingPlaceholderHelp.toggle()
                 } label: {
@@ -186,61 +256,97 @@ private struct FactsTab: View {
             focusedFact = id
         }
     }
+}
 
-    private func isPlanLocked(_ fact: Fact) -> Bool {
-        guard !license.state.isLicensed,
-              let index = store.facts.firstIndex(where: { $0.id == fact.id })
-        else { return false }
-        return index >= LicenseManager.freeFactLimit
+/// Saving failing quietly is the one failure that costs work, so it gets a
+/// permanent strip rather than a notification that can be missed.
+private struct FailureBanner: View {
+    let message: String
+    var onDismiss: (() -> Void)?
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 11))
+                .foregroundStyle(.orange)
+            Text(message)
+                .font(.system(size: 11.5))
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+            if let onDismiss {
+                Button {
+                    onDismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.orange.opacity(0.12))
     }
 }
 
+private struct EmptyFacts: View {
+    var body: some View {
+        VStack(spacing: 5) {
+            Text("No facts yet")
+                .font(.system(size: 13, weight: .medium))
+            Text("Add the things you retype: email, address, phone, IBAN.")
+                .font(.system(size: 11.5))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 46)
+    }
+}
+
+/// Live values, so nothing here is a hardcoded date that quietly goes stale.
 private struct PlaceholderHelpView: View {
-    private let examples = [
-        ("{date}", "2026-07-05"),
-        ("{shortdate}", "7/5/26"),
-        ("{longdate}", "July 5, 2026"),
-        ("{time}", "14:30"),
-        ("{datetime}", "2026-07-05 14:30"),
-        ("{date:+7:MMM d}", "Jul 12"),
-        ("{clipboard}", "current clipboard text"),
-        ("{username}", "macOS username"),
-        ("{hostname}", "computer name"),
-        ("{app}", "current app"),
-        ("{uuid}", "new UUID")
+    private let tokens = [
+        "{date}", "{shortdate}", "{longdate}", "{time}", "{datetime}",
+        "{date:+7:MMM d}", "{clipboard}", "{username}", "{fullname}",
+        "{hostname}", "{app}", "{uuid}"
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 9) {
             Text("Placeholders")
                 .font(.system(size: 13, weight: .semibold))
-            Text("Use these in a value; they resolve when inserted.")
-                .font(.system(size: 11))
+            Text("Use these anywhere in a value. They resolve as it's typed.")
+                .font(.system(size: 11.5))
                 .foregroundStyle(.secondary)
-            ForEach(examples, id: \.0) { token, description in
-                exampleRow(token, description)
+                .padding(.bottom, 2)
+
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(tokens, id: \.self) { token in
+                    PlaceholderRow(token: token, result: resolved(token))
+                }
             }
         }
-        .padding(14)
-        .frame(width: 310, alignment: .leading)
+        .padding(16)
+        .frame(width: 330, alignment: .leading)
     }
 
-    private func exampleRow(_ token: String, _ description: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text(token)
-                .font(.system(size: 12, design: .monospaced))
-                .frame(width: 128, alignment: .leading)
-            Text(description)
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-        }
+    private func resolved(_ token: String) -> String {
+        let value = PlaceholderResolver.resolve(
+            token,
+            context: PlaceholderResolver.Context(appName: NSRunningApplication.current.localizedName)
+        )
+        if value.isEmpty { return "—" }
+        let line = value.components(separatedBy: .newlines).joined(separator: " ")
+        return line.count > 30 ? line.prefix(29) + "…" : line
     }
 }
 
 private struct FactRow: View {
     @Binding var fact: Fact
     @FocusState.Binding var focus: UUID?
-    var isPlanLocked: Bool
+    let isPlanLocked: Bool
     var onDelete: () -> Void
     @State private var hovering = false
     @State private var valueRevealed = false
@@ -274,7 +380,8 @@ private struct FactRow: View {
                 }
                 .buttonStyle(.plain)
                 .opacity(fact.isSensitive || hovering ? 1 : 0)
-                .help(fact.isSensitive ? "Unlock this fact" : "Ask for Touch ID before inserting this fact")
+                .disabled(fact.isUnopened)
+                .help(fact.isSensitive ? "Unlock this fact" : "Encrypt this fact and ask for Touch ID before inserting it")
             }
 
             Button(action: onDelete) {
@@ -298,7 +405,26 @@ private struct FactRow: View {
 
     @ViewBuilder
     private var valueField: some View {
-        if valueIsLocked {
+        if fact.isUnopened {
+            // Synced from another Mac, encrypted, and the key hasn't arrived yet.
+            HStack(spacing: 6) {
+                Image(systemName: "icloud.slash")
+                    .font(.system(size: 10))
+                Text("Waiting for iCloud Keychain")
+                    .font(.system(size: 11.5))
+
+                Spacer(minLength: 8)
+
+                Button("Replace") { fact.value = "" }
+                    .buttonStyle(.link)
+                    .controlSize(.small)
+                    .help("Discard the encrypted value and type a new one")
+            }
+            .foregroundStyle(.tertiary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .help("Encrypted on another Mac. It opens by itself once iCloud Keychain catches up.")
+            .disabled(isPlanLocked)
+        } else if valueIsLocked {
             Button {
                 revealValue()
             } label: {
@@ -318,7 +444,10 @@ private struct FactRow: View {
             .help("Unlock with Touch ID to view or edit")
             .disabled(isPlanLocked)
         } else {
-            TextField("Value", text: $fact.value)
+            // Grows for the things worth storing whole: addresses, signatures,
+            // anything that is genuinely more than one line.
+            TextField("Value", text: $fact.value, axis: .vertical)
+                .lineLimit(1 ... 6)
                 .font(.system(size: 12.5, design: .monospaced))
                 .foregroundStyle(.secondary)
                 .disabled(isPlanLocked)
@@ -351,8 +480,10 @@ private struct FactRow: View {
 private struct GeneralTab: View {
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var store = FactStore.shared
-    @State private var accessibilityGranted = AXIsProcessTrusted()
+    @ObservedObject private var permissions = Permissions.shared
+    @ObservedObject private var updater = Updater.shared
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var checksAutomatically = Updater.shared.automaticallyChecks
 
     private var iCloudSync: Binding<Bool> {
         Binding(
@@ -363,61 +494,90 @@ private struct GeneralTab: View {
 
     var body: some View {
         Form {
-            Picker("Open palette with", selection: $settings.trigger) {
-                ForEach(TriggerModifier.allCases) { trigger in
-                    Text("Double-tap \(trigger.label)").tag(trigger)
-                }
+            if !permissions.isTrusted {
+                accessibilitySection
             }
 
-            Picker(selection: $settings.palettePreview) {
-                ForEach(PalettePreviewMode.allCases) { mode in
-                    Text(mode.label).tag(mode)
-                }
-            } label: {
-                Text("Preview values")
-                Text("Show what Return will type next to results in the palette.")
-            }
-
-            Toggle("Launch at login", isOn: $launchAtLogin)
-                .onChange(of: launchAtLogin) { _, enabled in
-                    do {
-                        if enabled {
-                            try SMAppService.mainApp.register()
-                        } else {
-                            try SMAppService.mainApp.unregister()
-                        }
-                    } catch {
-                        launchAtLogin = SMAppService.mainApp.status == .enabled
+            Section {
+                Picker("Open palette with", selection: $settings.trigger) {
+                    ForEach(TriggerModifier.allCases) { trigger in
+                        Text("Double-tap \(trigger.label)").tag(trigger)
                     }
                 }
 
-            Toggle(isOn: iCloudSync) {
-                Text("Sync with iCloud")
-                Text(store.iCloudStatus)
-            }
-
-            if !accessibilityGranted {
-                LabeledContent {
-                    Button("Open System Settings…") {
-                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+                Picker(selection: $settings.palettePreview) {
+                    ForEach(PalettePreviewMode.allCases) { mode in
+                        Text(mode.label).tag(mode)
                     }
                 } label: {
-                    Text("Accessibility access")
-                    Text("Needed to find your cursor and type for you.")
+                    Text("Preview values")
+                    Text("Show what Return will type, next to each result.")
+                }
+            }
+
+            Section {
+                Toggle("Launch at login", isOn: $launchAtLogin)
+                    .onChange(of: launchAtLogin) { _, enabled in
+                        do {
+                            if enabled {
+                                try SMAppService.mainApp.register()
+                            } else {
+                                try SMAppService.mainApp.unregister()
+                            }
+                        } catch {
+                            launchAtLogin = SMAppService.mainApp.status == .enabled
+                        }
+                    }
+
+                Toggle(isOn: iCloudSync) {
+                    Text("Sync with iCloud")
+                    Text(store.iCloudStatus)
+                }
+
+                Toggle(isOn: $checksAutomatically) {
+                    Text("Check for updates automatically")
+                    Text(updater.summary)
+                }
+                .onChange(of: checksAutomatically) { _, enabled in
+                    updater.automaticallyChecks = enabled
                 }
             }
         }
         .formStyle(.grouped)
         .frame(width: 440, height: 360)
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            accessibilityGranted = AXIsProcessTrusted()
+            permissions.refresh()
+        }
+    }
+
+    @ViewBuilder
+    private var accessibilitySection: some View {
+        Section {
+            LabeledContent {
+                Button("Open System Settings…") { permissions.openSystemSettings() }
+            } label: {
+                Text("Accessibility access")
+                Text("Needed to find your cursor and type for you. The palette turns on the moment you grant it — no restart.")
+            }
+
+            // Approval is tied to one copy of the app, so a second copy on disk is
+            // the usual reason the toggle looks on while this one stays blocked.
+            if !permissions.isRunningFromApplications {
+                LabeledContent {
+                    Button("Show in Finder") { permissions.revealRunningBundle() }
+                } label: {
+                    Text("Already allowed but still blocked?")
+                    Text("Approval follows one copy of the app. This one runs from \(permissions.runningBundlePath) — remove any other Backpocket from the list, then allow this one.")
+                }
+            }
         }
     }
 }
 
 private struct AboutTab: View {
+    @ObservedObject private var updater = Updater.shared
     @ObservedObject private var license = LicenseManager.shared
-    @State private var key = ""
+    @State private var licenseKey = ""
 
     private var version: String {
         let short = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
@@ -425,205 +585,144 @@ private struct AboutTab: View {
         return "\(short) (\(build))"
     }
 
-    private var checkoutURL: URL? {
-        license.checkoutURL
-    }
-
-    private var portalURL: URL? {
-        license.portalURL
-    }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(spacing: 14) {
             hero
             licenseCard
-            Spacer(minLength: 0)
-            footer
+            updateStatus
         }
-        .padding(24)
+        .padding(20)
         .frame(width: 440, height: 360)
     }
 
-    // MARK: Hero
-
     private var hero: some View {
-        HStack(spacing: 16) {
-            Image(systemName: "rectangle.stack.fill")
-                .font(.system(size: 25, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 58, height: 58)
-                .background(
-                    LinearGradient(colors: [.indigo, .blue], startPoint: .topLeading, endPoint: .bottomTrailing),
-                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-                )
-                .shadow(color: .blue.opacity(0.25), radius: 7, y: 3)
+        HStack(spacing: 14) {
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: 62, height: 62)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("Backpocket")
-                    .font(.system(size: 21, weight: .semibold))
+                    .font(.system(size: 20, weight: .semibold))
                 Text("Your facts, one double-tap away.")
                     .font(.system(size: 12.5))
                     .foregroundStyle(.secondary)
                 Text("Version \(version)")
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
-                    .padding(.top, 2)
             }
 
             Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
-
-    // MARK: License card
 
     private var licenseCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 11) {
-                    Image(systemName: license.state.isLicensed ? "checkmark.seal.fill" : "seal")
-                        .font(.system(size: 17))
-                        .foregroundStyle(license.state.isLicensed ? Color.green : Color.secondary)
-
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(license.state.isLicensed ? "Licensed" : "Free plan")
-                            .font(.system(size: 13.5, weight: .semibold))
-                        Text(planSubtitle)
-                            .font(.system(size: 11.5))
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer(minLength: 0)
-
-                    if license.isWorking {
-                        ProgressView().controlSize(.small)
-                    }
-                }
-
-                if let snapshot = license.currentSnapshot {
-                    Divider()
-                    licenseDetails(snapshot)
-                } else {
-                    activationField
-                }
-            }
-            .padding(16)
-            .background(.quinary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(.separator.opacity(0.6), lineWidth: 1)
-            )
-
-            if license.currentSnapshot != nil {
-                licenseActions
-            }
-        }
-    }
-
-    private var planSubtitle: String {
-        if license.state.isLicensed {
-            return "Unlimited facts, unlocked."
-        }
-        switch license.state {
-        case .validating:
-            return "Checking your license…"
-        case .inactive(let reason):
-            return reason
-        default:
-            return "Up to \(LicenseManager.freeFactLimit) facts."
-        }
-    }
-
-    private func licenseDetails(_ snapshot: LicenseSnapshot) -> some View {
-        VStack(spacing: 9) {
-            detailRow("Key", snapshot.displayKey, monospaced: true)
-            if let email = snapshot.customerEmail {
-                detailRow("Account", email)
-            }
-            if let expiresAt = snapshot.expiresAt {
-                detailRow("Renews", expiresAt.formatted(date: .abbreviated, time: .omitted))
-            }
-        }
-    }
-
-    private var licenseActions: some View {
-        HStack(spacing: 16) {
-            if let portalURL {
-                Button("Portal") {
-                    NSWorkspace.shared.open(portalURL)
-                }
-                .disabled(license.isWorking)
-            }
-
-            Spacer(minLength: 0)
-
-            Button("Refresh") { license.refresh() }
-                .disabled(license.isWorking)
-            Button("Remove") { license.deactivate() }
-                .disabled(license.isWorking)
-        }
-        .buttonStyle(.link)
-        .controlSize(.small)
-        .padding(.horizontal, 4)
-    }
-
-    private func detailRow(_ label: String, _ value: String, monospaced: Bool = false) -> some View {
-        HStack {
-            Text(label)
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 12)
-            Text(value)
-                .font(.system(size: 12, design: monospaced ? .monospaced : .default))
-                .textSelection(.enabled)
-                .lineLimit(1)
-                .truncationMode(.middle)
-        }
-    }
-
-    private var activationField: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                SecureField("Enter license key", text: $key)
-                    .textFieldStyle(.roundedBorder)
-                    .textContentType(.oneTimeCode)
-                    .disabled(license.isWorking)
-                    .onSubmit { activate() }
-                Button("Activate") { activate() }
-                    .disabled(license.isWorking || key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
+            HStack(spacing: 9) {
+                Image(systemName: license.state.isLicensed ? "checkmark.seal.fill" : "seal")
+                    .foregroundStyle(license.state.isLicensed ? Color.green : Color.secondary)
 
-            if let checkoutURL {
-                HStack(spacing: 5) {
-                    Text("Don't have a key?")
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(license.state.isLicensed ? "Unlimited" : "Free plan")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text(licenseSubtitle)
                         .font(.system(size: 11.5))
                         .foregroundStyle(.secondary)
-                    Button("Get a license") {
-                        NSWorkspace.shared.open(checkoutURL)
+                }
+
+                Spacer(minLength: 0)
+
+                if license.isWorking {
+                    ProgressView().controlSize(.small)
+                }
+            }
+
+            if let snapshot = license.currentSnapshot, license.state.isLicensed {
+                HStack {
+                    Text(snapshot.displayKey)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+
+                    Spacer(minLength: 8)
+
+                    if let portalURL = license.portalURL {
+                        Button("Purchases") { NSWorkspace.shared.open(portalURL) }
                     }
-                    .buttonStyle(.link)
-                    .controlSize(.small)
+                    Button("Remove") { license.deactivate() }
+                }
+                .buttonStyle(.link)
+                .controlSize(.small)
+            } else {
+                HStack(spacing: 8) {
+                    SecureField("License key", text: $licenseKey)
+                        .textFieldStyle(.roundedBorder)
+                        .textContentType(.oneTimeCode)
+                        .onSubmit { activateLicense() }
+
+                    Button("Activate") { activateLicense() }
+                        .disabled(
+                            license.isWorking
+                                || licenseKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        )
+
+                    if let checkoutURL = license.checkoutURL {
+                        Button("Get Unlimited") { NSWorkspace.shared.open(checkoutURL) }
+                    }
                 }
             }
         }
+        .padding(13)
+        .background(.quinary, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
     }
 
-    // MARK: Footer
+    private var licenseSubtitle: String {
+        if license.state.isLicensed { return "Unlimited facts unlocked." }
+        if case .inactive(let reason) = license.state { return reason }
+        if case .validating = license.state { return "Checking license…" }
+        return "Store up to 5 facts free. Unlimited is $5 once."
+    }
 
-    private var footer: some View {
-        HStack {
-            Spacer(minLength: 0)
-            Button("Check for Updates…") {
-                AppDelegate.shared?.checkForUpdates()
+    private var updateStatus: some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 6) {
+                if case .checking = updater.status {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Image(systemName: icon)
+                        .font(.system(size: 11))
+                        .foregroundStyle(tint)
+                }
+                Text(updater.summary)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(.secondary)
             }
-            .buttonStyle(.link)
-            .font(.system(size: 12))
+
             Spacer(minLength: 0)
+
+            Button(updater.hasUpdate ? "Install Update…" : "Check for Updates…") {
+                updater.checkForUpdates()
+            }
+            .disabled(!updater.canCheck)
         }
+        .padding(.horizontal, 2)
     }
 
-    private func activate() {
-        guard !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+    private var icon: String {
+        if updater.hasUpdate { return "arrow.down.circle.fill" }
+        return updater.isUpToDate ? "checkmark.circle.fill" : "info.circle"
+    }
+
+    private var tint: Color {
+        if updater.hasUpdate { return .accentColor }
+        return updater.isUpToDate ? .green : .secondary
+    }
+
+    private func activateLicense() {
+        let key = licenseKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else { return }
         license.activate(key: key)
-        key = ""
+        licenseKey = ""
     }
 }

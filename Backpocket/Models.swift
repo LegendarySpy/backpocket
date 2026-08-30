@@ -4,11 +4,29 @@ import Combine
 struct Fact: Identifiable, Codable, Equatable {
     var id: UUID
     var name: String
-    var value: String
+    var value: String {
+        didSet { unopened = nil } // a typed-over value replaces what couldn't be read
+    }
     var lastUsed: Date?
     var useCount: Int
     var appUsage: [String: FactUsage]
     var isSensitive: Bool
+
+    /// Set when a locked value arrived encrypted and the key hasn't reached this
+    /// Mac yet. Held verbatim so saving here can't destroy what another Mac wrote.
+    private(set) var unopened: String?
+
+    var isUnopened: Bool { unopened != nil }
+
+    var isStored: Bool {
+        isUnopened
+            || !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, value, lastUsed, useCount, appUsage, isSensitive
+    }
 
     init(
         id: UUID = UUID(),
@@ -32,12 +50,48 @@ struct Fact: Identifiable, Codable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
-        value = try container.decode(String.self, forKey: .value)
         lastUsed = try container.decodeIfPresent(Date.self, forKey: .lastUsed)
         useCount = try container.decodeIfPresent(Int.self, forKey: .useCount) ?? (lastUsed == nil ? 0 : 1)
         appUsage = try container.decodeIfPresent([String: FactUsage].self, forKey: .appUsage) ?? [:]
         isSensitive = try container.decodeIfPresent(Bool.self, forKey: .isSensitive) ?? false
+
+        let stored = try container.decode(String.self, forKey: .value)
+        if Vault.isSealed(stored) {
+            value = Vault.open(stored) ?? ""
+            unopened = value.isEmpty ? stored : nil
+        } else {
+            value = stored
+        }
     }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encodeIfPresent(lastUsed, forKey: .lastUsed)
+        try container.encode(useCount, forKey: .useCount)
+        try container.encode(appUsage, forKey: .appUsage)
+        try container.encode(isSensitive, forKey: .isSensitive)
+
+        if let unopened {
+            try container.encode(unopened, forKey: .value)
+        } else if isSensitive, !value.isEmpty {
+            // The same bytes go to disk and to iCloud, so falling back to
+            // plaintext would publish the secret. Failing the encode instead
+            // aborts the whole write, leaving the last good copy in place.
+            guard let sealed = Vault.seal(value) else {
+                BPLog.log("could not seal a locked fact; skipping this save")
+                throw VaultError.couldNotSeal
+            }
+            try container.encode(sealed, forKey: .value)
+        } else {
+            try container.encode(value, forKey: .value)
+        }
+    }
+}
+
+enum VaultError: Error {
+    case couldNotSeal
 }
 
 struct FactUsage: Codable, Equatable {
@@ -68,6 +122,11 @@ final class FactStore: ObservableObject {
     }
     @Published private(set) var iCloudSyncEnabled: Bool
     @Published private(set) var iCloudStatus = "Syncing with iCloud"
+
+    /// Set when a save was refused rather than written. Nothing is lost yet — the
+    /// last good file is still on disk — but edits are no longer persisting, and
+    /// staying quiet about that is how someone loses a day of work.
+    @Published private(set) var saveFailure: String?
 
     private let fileURL: URL
     private let cloudStore = NSUbiquitousKeyValueStore.default
@@ -105,7 +164,21 @@ final class FactStore: ObservableObject {
         }
     }
 
-    func add() -> Fact {
+    var storedFactCount: Int {
+        facts.lazy.filter(\.isStored).count
+    }
+
+    func isAvailable(_ fact: Fact, unlimited: Bool) -> Bool {
+        guard !unlimited, fact.isStored else { return true }
+        return facts.lazy.filter(\.isStored).prefix(LicenseManager.freeFactLimit).contains { $0.id == fact.id }
+    }
+
+    func availableFacts(unlimited: Bool) -> [Fact] {
+        unlimited ? facts : Array(facts.lazy.filter(\.isStored).prefix(LicenseManager.freeFactLimit))
+    }
+
+    func add(unlimited: Bool) -> Fact? {
+        guard unlimited || storedFactCount < LicenseManager.freeFactLimit else { return nil }
         let fact = Fact(name: "", value: "")
         facts.append(fact)
         return fact
@@ -118,20 +191,50 @@ final class FactStore: ObservableObject {
     /// Stores text captured from the Services menu. Returns the existing fact
     /// when the value is already saved, and fills an untouched empty row before
     /// appending a new one.
-    func captured(_ value: String) -> Fact {
+    func captured(_ value: String, unlimited: Bool) -> Fact? {
         if let existing = facts.first(where: { $0.value == value }) {
             return existing
         }
+        // An unopened fact also reads as empty, but its value is another Mac's
+        // ciphertext waiting for a key, not a free row.
         if let index = facts.firstIndex(where: {
+            !$0.isUnopened &&
             $0.name.trimmingCharacters(in: .whitespaces).isEmpty &&
             $0.value.trimmingCharacters(in: .whitespaces).isEmpty
         }) {
             facts[index].value = value
             return facts[index]
         }
+        guard unlimited || storedFactCount < LicenseManager.freeFactLimit else { return nil }
         let fact = Fact(name: "", value: value)
         facts.append(fact)
         return fact
+    }
+
+    /// Applies an imported set: matching ids are updated in place, the rest are
+    /// appended. Nothing already here is removed. Returns how many were new.
+    struct MergeResult {
+        var added = 0
+        var skipped = 0
+    }
+
+    @discardableResult
+    func merge(_ incoming: [Fact], unlimited: Bool) -> MergeResult {
+        var result = MergeResult()
+        for fact in incoming {
+            guard !fact.name.isEmpty || !fact.value.isEmpty else { continue }
+            if let index = facts.firstIndex(where: { $0.id == fact.id }) {
+                facts[index].name = fact.name
+                facts[index].value = fact.value
+                facts[index].isSensitive = fact.isSensitive
+            } else if unlimited || storedFactCount < LicenseManager.freeFactLimit {
+                facts.append(fact)
+                result.added += 1
+            } else {
+                result.skipped += 1
+            }
+        }
+        return result
     }
 
     func markUsed(_ id: UUID, appIdentifier: String?) {
@@ -178,24 +281,43 @@ final class FactStore: ObservableObject {
     private func scheduleSave() {
         let updateRevision = !isApplyingRemoteChange
         let syncToCloud = iCloudSyncEnabled && updateRevision
+        // The revision moves at edit time, not at write time: during the debounce
+        // the local copy is already newer than anything remote, and a payload
+        // landing mid-typing must not be allowed to outrank it.
+        if updateRevision { bumpRevision() }
         saveTask?.cancel()
         saveTask = Task {
             try? await Task.sleep(for: .milliseconds(400))
             guard !Task.isCancelled else { return }
-            save(updateRevision: updateRevision, syncToCloud: syncToCloud)
+            save(updateRevision: false, syncToCloud: syncToCloud)
         }
     }
 
+    private func bumpRevision() {
+        localRevision = Date()
+        UserDefaults.standard.set(localRevision.timeIntervalSince1970, forKey: Self.localRevisionKey)
+    }
+
     private func save(updateRevision: Bool, syncToCloud: Bool) {
-        if updateRevision {
-            localRevision = Date()
-            UserDefaults.standard.set(localRevision.timeIntervalSince1970, forKey: Self.localRevisionKey)
-        }
+        if updateRevision { bumpRevision() }
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        guard let data = try? encoder.encode(facts) else { return }
-        try? data.write(to: fileURL, options: .atomic)
+        // A fact that cannot be sealed fails the whole encode; writing a partial
+        // or plaintext file would be worse than keeping the last good one.
+        guard let data = try? encoder.encode(facts) else {
+            BPLog.log("skipped save: facts could not be encoded")
+            saveFailure = "A locked fact couldn't be encrypted, so recent changes aren't being saved. Unlock this Mac's Keychain, or unlock the fact to store it as ordinary text."
+            return
+        }
+        do {
+            try data.write(to: fileURL, options: .atomic)
+            saveFailure = nil
+        } catch {
+            BPLog.log("save failed: \(error.localizedDescription)")
+            saveFailure = "Couldn't write to \(fileURL.path): \(error.localizedDescription)"
+            return
+        }
         try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
 
         if syncToCloud {
@@ -259,6 +381,13 @@ final class FactStore: ObservableObject {
     }
 
     private func changedCloudKeys(from notification: Notification) -> Set<String> {
+        // An account change carries no key list; treating it as "our payload
+        // changed" would let a different Apple Account's facts replace these.
+        let reason = notification.userInfo?[NSUbiquitousKeyValueStoreChangeReasonKey] as? Int
+        guard reason == NSUbiquitousKeyValueStoreServerChange
+            || reason == NSUbiquitousKeyValueStoreInitialSyncChange
+        else { return [] }
+
         let keys = notification.userInfo?[NSUbiquitousKeyValueStoreChangedKeysKey] as? [String]
         return Set(keys ?? [Self.cloudPayloadKey])
     }

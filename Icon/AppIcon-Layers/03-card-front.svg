@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Full-canvas layer. This is the centered foreground fact card. -->
+  <rect x="320" y="306" width="408" height="302" rx="46" fill="#FFFFFF"/>
+  <rect x="366" y="350" width="68" height="68" rx="18" fill="#3E63E6"/>
+  <circle cx="400" cy="375" r="10" fill="#FFFFFF"/>
+  <path d="M382 404c3-13 11-19 18-19s15 6 18 19" fill="none" stroke="#FFFFFF" stroke-width="8" stroke-linecap="round"/>
+  <rect x="456" y="354" width="188" height="20" rx="10" fill="#536BBE"/>
+  <rect x="456" y="390" width="220" height="16" rx="8" fill="#9EACD9"/>
+  <rect x="366" y="444" width="282" height="16" rx="8" fill="#AAB6DD"/>
+  <rect x="366" y="478" width="214" height="16" rx="8" fill="#CCD3EA"/>
+</svg>

@@ -7,17 +7,22 @@ final class PaletteModel: ObservableObject {
     @Published var selection = 0
     @Published var growsUp = true
 
+    private var ranking: (query: String, facts: [Fact], hint: String?, results: [FuzzyResult])?
+
     /// Derived, not stored: publishing results from the query's didSet would
-    /// publish mid-view-update whenever the text field writes the binding.
+    /// publish mid-view-update whenever the text field writes the binding. A
+    /// single body pass reads this several times, so the rank itself is memoized.
     var results: [FuzzyResult] {
-        var facts = FactStore.shared.facts
-        if !LicenseManager.shared.state.isLicensed {
-            facts = Array(facts.prefix(LicenseManager.freeFactLimit))
-        }
+        var facts = FactStore.shared.availableFacts(unlimited: LicenseManager.shared.state.isLicensed)
         if !query.trimmingCharacters(in: .whitespaces).isEmpty {
             facts += PlaceholderResolver.builtInFacts
         }
-        return Fuzzy.rank(query, in: facts, context: appIdentifier, fieldHint: fieldHint)
+        if let ranking, ranking.query == query, ranking.hint == fieldHint, ranking.facts == facts {
+            return ranking.results
+        }
+        let ranked = Fuzzy.rank(query, in: facts, context: appIdentifier, fieldHint: fieldHint)
+        ranking = (query, facts, fieldHint, ranked)
+        return ranked
     }
 
     var appIdentifier: String?
@@ -36,11 +41,16 @@ final class PaletteModel: ObservableObject {
     /// the window fade once it flips.
     @Published var introducing = true
 
+    /// Bumped per show so the input field re-takes focus every time, not just
+    /// the first time its view appears.
+    @Published var focusToken = 0
+
     func prepareForShow(appIdentifier: String?, appName: String?, fieldHint: String?) {
         self.appIdentifier = appIdentifier
         self.appName = appName
         self.fieldHint = fieldHint
         introducing = true
+        focusToken += 1
         reset()
     }
 
@@ -178,6 +188,7 @@ final class PaletteController: NSObject, NSWindowDelegate {
         CaretLocator.warmUp(pid: app.processIdentifier)
         if app.processIdentifier != targetApp?.processIdentifier {
             showGeneration += 1 // a show still waiting on the old app's caret is moot
+            resolution = nil
             if panel.isVisible { dismiss(reactivate: false) }
         }
     }
@@ -186,105 +197,92 @@ final class PaletteController: NSObject, NSWindowDelegate {
 
     func toggle() {
         let now = ProcessInfo.processInfo.systemUptime
-        guard now - lastToggle > 0.3 else { return }
+        guard now - lastToggle > 0.2 else { return }
         lastToggle = now
         panel.isVisible ? dismiss() : show()
     }
 
-    /// Bumped when a pending show becomes irrelevant so its anchor resolution is dropped.
+    /// Bumped whenever a pending show becomes irrelevant, so its resolution is dropped.
     private var showGeneration = 0
 
-    private var staged: (anchor: PaletteAnchor, pid: pid_t?, at: TimeInterval)?
-    private var prefetchingPid: pid_t??
-    /// Set when show() arrives while the first tap's resolve is still running;
-    /// its completion presents instead of a fresh resolve starting over.
-    private var pendingShowGeneration: Int?
+    /// The in-flight (or just-finished) read of the target app. One resolution
+    /// serves both taps of a double-tap: the first starts it, the second awaits it.
+    private var resolution: (pid: pid_t?, task: Task<PaletteTarget, Never>, startedAt: TimeInterval)?
+    private static let resolutionLifetime: TimeInterval = 0.6
 
-    /// The first tap of a double-tap does all the work — anchor, field hint,
-    /// model prep, panel position and layout — so the second tap only orders front.
+    /// The first tap starts the accessibility read and stages the palette off
+    /// screen, so the second tap only has to order it front.
     func prefetchAnchor() {
         guard !panel.isVisible else { return }
         let app = NSWorkspace.shared.frontmostApplication
-        let pid = app?.processIdentifier
-        prefetchingPid = .some(pid)
-        CaretLocator.resolveAnchor(for: pid) { [weak self] anchor in
-            guard let self else { return }
-            prefetchingPid = nil
-            stage(at: anchor, app: app)
-            if let pending = pendingShowGeneration, pending == showGeneration {
-                pendingShowGeneration = nil
-                staged = nil
-                orderFront(anchor: anchor)
-            } else {
-                staged = (anchor, pid, ProcessInfo.processInfo.systemUptime)
-            }
+        let generation = showGeneration
+        let task = resolve(for: app)
+        Task { @MainActor in
+            let target = await task.value
+            guard !panel.isVisible, generation == showGeneration else { return }
+            stage(target, app: app)
         }
     }
 
     func show() {
         showGeneration += 1
         let generation = showGeneration
-        targetApp = NSWorkspace.shared.frontmostApplication
-        let pid = targetApp?.processIdentifier
-        pendingShowGeneration = nil
-        if let staged, staged.pid == pid,
-           ProcessInfo.processInfo.systemUptime - staged.at < 0.6 {
-            self.staged = nil
-            orderFront(anchor: staged.anchor)
-            return
-        }
-        staged = nil
-        if prefetchingPid == .some(pid) {
-            pendingShowGeneration = generation
-            return
-        }
-        CaretLocator.resolveAnchor(for: pid) { [weak self] anchor in
-            guard let self, generation == showGeneration else { return }
-            present(at: anchor, pid: pid)
+        let app = NSWorkspace.shared.frontmostApplication
+        targetApp = app
+        let task = resolve(for: app)
+        Task { @MainActor in
+            let target = await task.value
+            guard generation == showGeneration else { return }
+            stage(target, app: app)
+            orderFront()
+            if !target.anchor.fromCaret { await settleOntoCaret(pid: app?.processIdentifier) }
         }
     }
 
-    /// Cold path: no usable first-tap work, so stage and order front together.
-    private func present(at anchor: PaletteAnchor, pid: pid_t?) {
-        stage(at: anchor, app: targetApp)
-        orderFront(anchor: anchor)
+    /// The palette opened on a fallback. Keep glancing for the real caret and
+    /// settle onto it within the first frames, before the user has read it.
+    private func settleOntoCaret(pid: pid_t?) async {
+        let generation = showGeneration
+        for _ in 0 ..< 4 {
+            try? await Task.sleep(for: .milliseconds(70))
+            guard generation == showGeneration, panel.isVisible, model.query.isEmpty else { return }
+            if let anchor = CaretLocator.caretOnly(for: pid) {
+                BPLog.log("settling onto caret after fallback open")
+                position(at: anchor)
+                return
+            }
+        }
     }
 
-    /// Everything the palette needs on screen except being on screen. The field
-    /// hint runs here so a freshly nudged Chromium tree has had time to answer.
-    private func stage(at anchor: PaletteAnchor, app: NSRunningApplication?) {
+    private func resolve(for app: NSRunningApplication?) -> Task<PaletteTarget, Never> {
+        let pid = app?.processIdentifier
+        let now = ProcessInfo.processInfo.systemUptime
+        if let resolution, resolution.pid == pid, now - resolution.startedAt < Self.resolutionLifetime {
+            return resolution.task
+        }
+        let task = Task { @MainActor in await CaretLocator.resolveTarget(for: pid) }
+        resolution = (pid, task, now)
+        return task
+    }
+
+    /// Everything the palette needs on screen except being on screen. Runs off
+    /// the resolved target only, so re-staging never touches accessibility again.
+    private func stage(_ target: PaletteTarget, app: NSRunningApplication?) {
         model.prepareForShow(
             appIdentifier: Self.appIdentifier(for: app),
             appName: app?.localizedName,
-            fieldHint: CaretLocator.fieldHint(for: app?.processIdentifier)
+            fieldHint: target.fieldHint
         )
-        position(at: anchor)
+        position(at: target.anchor)
         panel.contentView?.layoutSubtreeIfNeeded()
     }
 
-    private func orderFront(anchor: PaletteAnchor) {
+    private func orderFront() {
         panel.makeKeyAndOrderFront(nil)
+        focusInput()
         // Pills enter once the panel is visible so their blur-replace rides the window fade.
         DispatchQueue.main.async { [weak self] in
             withAnimation(.smooth(duration: 0.08)) { self?.model.introducing = false }
-        }
-        focusInputSoon()
-        if !anchor.fromCaret { refinePositionSoon() }
-    }
-
-    /// When the first pass fell back, keep glancing for the real caret and
-    /// slide onto it before the user starts typing.
-    private func refinePositionSoon(delays: [TimeInterval] = [0.2, 0.6]) {
-        guard let delay = delays.first else { return }
-        let pid = targetApp?.processIdentifier
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            guard let self, panel.isVisible, model.query.isEmpty else { return }
-            let anchor = CaretLocator.anchor(for: pid)
-            if anchor.fromCaret {
-                position(at: anchor)
-            } else {
-                refinePositionSoon(delays: Array(delays.dropFirst()))
-            }
         }
     }
 
@@ -292,6 +290,7 @@ final class PaletteController: NSObject, NSWindowDelegate {
     /// when dismissal came from the user clicking into something else.
     func dismiss(reactivate: Bool = true) {
         showGeneration += 1
+        resolution = nil
         panel.orderOut(nil)
         model.prepareForDismiss()
         if reactivate { targetApp?.activate() }
@@ -299,10 +298,11 @@ final class PaletteController: NSObject, NSWindowDelegate {
 
     private func insert(_ fact: Fact, typing value: String) {
         let appIdentifier = model.appIdentifier
+        let pid = targetApp?.processIdentifier
         dismiss()
         let type = { [weak self] in
             FactStore.shared.markUsed(fact.id, appIdentifier: appIdentifier)
-            self?.deliverSoon(value)
+            self?.deliverSoon(value, sensitive: fact.isSensitive, pid: pid)
         }
         if fact.isSensitive {
             Auth.requireIfNeeded(reason: "insert \(fact.name)", onSuccess: type)
@@ -312,14 +312,29 @@ final class PaletteController: NSObject, NSWindowDelegate {
     }
 
     private func insertRaw(_ text: String) {
+        let pid = targetApp?.processIdentifier
         dismiss()
         let value = PlaceholderResolver.resolve(text, context: model.placeholderContext)
-        deliverSoon(value)
+        deliverSoon(value, sensitive: false, pid: pid)
     }
 
-    private func deliverSoon(_ value: String) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-            Typer.type(value)
+    /// Pasting is one keystroke instead of one per character, so nothing can be
+    /// dropped or reordered mid-value.
+    ///
+    /// A sensitive value never transits the pasteboard, however briefly. It goes
+    /// in through accessibility where that provably works — instant, and it never
+    /// leaves the field — and is typed out character by character everywhere else.
+    private func deliverSoon(_ value: String, sensitive: Bool, pid: pid_t?) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(80))
+            if sensitive {
+                if await CaretLocator.insertText(value, pid: pid) { return }
+                Typer.type(value)
+            } else if Pasteboard.stage(value) {
+                Typer.pressCommandV()
+            } else {
+                Typer.type(value)
+            }
         }
     }
 
@@ -377,15 +392,6 @@ final class PaletteController: NSObject, NSWindowDelegate {
             if let field = firstTextField(in: subview) { return field }
         }
         return nil
-    }
-
-    private func focusInputSoon() {
-        focusInput()
-        for delay in [0.03, 0.1] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                self?.focusInput()
-            }
-        }
     }
 
     private func focusInput() {

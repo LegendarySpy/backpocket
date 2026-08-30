@@ -5,22 +5,38 @@ import AppKit
 final class DoubleTapMonitor {
     static let shared = DoubleTapMonitor()
 
+    private static let window: TimeInterval = 0.4
+
     private var lastTap: TimeInterval = 0
     private var optionWasDown = false
     private var interrupted = false
-    private var monitors: [Any?] = []
+    private var monitors: [Any] = []
     private var action: (() -> Void)?
     var onFirstTap: (() -> Void)?
 
     func start(action: @escaping () -> Void) {
         self.action = action
-        monitors.append(NSEvent.addGlobalMonitorForEvents(matching: [.flagsChanged, .keyDown]) { [weak self] event in
+        restart()
+    }
+
+    /// Monitors registered without accessibility trust silently deliver nothing,
+    /// so they get torn down and rebuilt when trust arrives.
+    func restart() {
+        guard action != nil else { return }
+        monitors.forEach(NSEvent.removeMonitor)
+        monitors.removeAll()
+        lastTap = 0
+        optionWasDown = false
+        interrupted = false
+
+        let global = NSEvent.addGlobalMonitorForEvents(matching: [.flagsChanged, .keyDown], handler: { [weak self] event in
             self?.handle(event)
         })
-        monitors.append(NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .keyDown]) { [weak self] event in
+        let local = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .keyDown], handler: { [weak self] event in
             self?.handle(event)
             return event
         })
+        monitors = [global, local].compactMap { $0 }
     }
 
     private var triggerFlag: NSEvent.ModifierFlags {
@@ -37,7 +53,7 @@ final class DoubleTapMonitor {
         if flags == triggerFlag, !optionWasDown {
             optionWasDown = true
             let now = ProcessInfo.processInfo.systemUptime
-            if !interrupted, now - lastTap < 0.35 {
+            if !interrupted, now - lastTap < Self.window {
                 lastTap = 0
                 DispatchQueue.main.async { self.action?() }
             } else {

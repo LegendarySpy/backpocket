@@ -21,6 +21,14 @@
 		A2000000000000000000000D /* Placeholders.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000D /* Placeholders.swift */; };
 		A2000000000000000000000F /* LicenseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000F /* LicenseManager.swift */; };
 		A20000000000000000000012 /* Capture.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000012 /* Capture.swift */; };
+		A20000000000000000000013 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000013 /* OnboardingView.swift */; };
+		A20000000000000000000015 /* Permissions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000015 /* Permissions.swift */; };
+		A20000000000000000000016 /* Pasteboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000016 /* Pasteboard.swift */; };
+		A20000000000000000000017 /* Vault.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000017 /* Vault.swift */; };
+		A20000000000000000000018 /* Updater.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000018 /* Updater.swift */; };
+		A2000000000000000000001A /* Backup.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000001A /* Backup.swift */; };
+		A20000000000000000000019 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000019 /* Assets.xcassets */; };
+		A2000000000000000000001B /* icon.icon in Resources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000001B /* icon.icon */; };
 		A2000000000000000000000E /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000002 /* Sparkle */; };
 /* End PBXBuildFile section */
 
@@ -41,6 +49,14 @@
 		A1000000000000000000000F /* LicenseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LicenseManager.swift; sourceTree = "<group>"; };
 		A10000000000000000000010 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A10000000000000000000012 /* Capture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Capture.swift; sourceTree = "<group>"; };
+		A10000000000000000000013 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		A10000000000000000000015 /* Permissions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Permissions.swift; sourceTree = "<group>"; };
+		A10000000000000000000016 /* Pasteboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Pasteboard.swift; sourceTree = "<group>"; };
+		A10000000000000000000017 /* Vault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Vault.swift; sourceTree = "<group>"; };
+		A10000000000000000000018 /* Updater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Updater.swift; sourceTree = "<group>"; };
+		A1000000000000000000001A /* Backup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Backup.swift; sourceTree = "<group>"; };
+		A10000000000000000000019 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A1000000000000000000001B /* icon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = Icon/icon.icon; sourceTree = SOURCE_ROOT; };
 		A10000000000000000000011 /* Backpocket.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Backpocket.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -60,6 +76,7 @@
 			isa = PBXGroup;
 			children = (
 				A30000000000000000000002 /* Backpocket */,
+				A1000000000000000000001B /* icon.icon */,
 				A30000000000000000000003 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -76,8 +93,15 @@
 				A10000000000000000000007 /* PaletteController.swift */,
 				A10000000000000000000008 /* PaletteView.swift */,
 				A10000000000000000000009 /* SettingsView.swift */,
+				A10000000000000000000013 /* OnboardingView.swift */,
 				A1000000000000000000000A /* BPLog.swift */,
 				A1000000000000000000000B /* Auth.swift */,
+				A10000000000000000000015 /* Permissions.swift */,
+				A10000000000000000000016 /* Pasteboard.swift */,
+				A10000000000000000000017 /* Vault.swift */,
+				A10000000000000000000018 /* Updater.swift */,
+				A1000000000000000000001A /* Backup.swift */,
+				A10000000000000000000019 /* Assets.xcassets */,
 				A10000000000000000000012 /* Capture.swift */,
 				A1000000000000000000000D /* Placeholders.swift */,
 				A1000000000000000000000F /* LicenseManager.swift */,
@@ -158,6 +182,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A20000000000000000000019 /* Assets.xcassets in Resources */,
+				A2000000000000000000001B /* icon.icon in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -177,8 +203,14 @@
 				A20000000000000000000007 /* PaletteController.swift in Sources */,
 				A20000000000000000000008 /* PaletteView.swift in Sources */,
 				A20000000000000000000009 /* SettingsView.swift in Sources */,
+				A20000000000000000000013 /* OnboardingView.swift in Sources */,
 				A2000000000000000000000A /* BPLog.swift in Sources */,
 				A2000000000000000000000B /* Auth.swift in Sources */,
+				A20000000000000000000015 /* Permissions.swift in Sources */,
+				A20000000000000000000016 /* Pasteboard.swift in Sources */,
+				A20000000000000000000017 /* Vault.swift in Sources */,
+				A20000000000000000000018 /* Updater.swift in Sources */,
+				A2000000000000000000001A /* Backup.swift in Sources */,
 				A20000000000000000000012 /* Capture.swift in Sources */,
 				A2000000000000000000000D /* Placeholders.swift in Sources */,
 				A2000000000000000000000F /* LicenseManager.swift in Sources */,
@@ -239,12 +271,13 @@
 				BACKPOCKET_POLAR_LICENSE_BENEFIT_ID = "8c725bcf-1e7f-402b-90c8-19440b7654d2";
 				BACKPOCKET_POLAR_ORGANIZATION_ID = "98d75121-191c-4136-aa56-2c7803173973";
 				BACKPOCKET_POLAR_PORTAL_URL = "https://polar.sh/g-squared/portal";
+				ASSETCATALOG_COMPILER_APPICON_NAME = icon;
 				CODE_SIGN_IDENTITY = "Developer ID Application";
 				CODE_SIGN_STYLE = Manual;
 				PROVISIONING_PROFILE_SPECIFIER = "Backpocket Developer ID";
 				COMBINE_HIDPI_IMAGES = YES;
 				CODE_SIGN_ENTITLEMENTS = Backpocket/Backpocket.entitlements;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = S8W699VPD7;
 				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = Backpocket/Info.plist;
@@ -252,7 +285,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.backpocket.mac;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
@@ -267,12 +300,13 @@
 				BACKPOCKET_POLAR_LICENSE_BENEFIT_ID = "8c725bcf-1e7f-402b-90c8-19440b7654d2";
 				BACKPOCKET_POLAR_ORGANIZATION_ID = "98d75121-191c-4136-aa56-2c7803173973";
 				BACKPOCKET_POLAR_PORTAL_URL = "https://polar.sh/g-squared/portal";
+				ASSETCATALOG_COMPILER_APPICON_NAME = icon;
 				CODE_SIGN_IDENTITY = "Developer ID Application";
 				CODE_SIGN_STYLE = Manual;
 				PROVISIONING_PROFILE_SPECIFIER = "Backpocket Developer ID";
 				COMBINE_HIDPI_IMAGES = YES;
 				CODE_SIGN_ENTITLEMENTS = Backpocket/Backpocket.entitlements;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = S8W699VPD7;
 				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = Backpocket/Info.plist;
@@ -280,7 +314,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.backpocket.mac;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;

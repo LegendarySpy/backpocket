@@ -1,6 +1,10 @@
 import Foundation
 import Security
 
+extension Notification.Name {
+    static let licenseRequired = Notification.Name("licenseRequired")
+}
+
 enum LicenseState: Equatable {
     case missing
     case validating
@@ -10,21 +14,6 @@ enum LicenseState: Equatable {
 
     var isLicensed: Bool {
         if case .active = self { true } else { false }
-    }
-
-    var summary: String {
-        switch self {
-        case .missing:
-            "Free"
-        case .validating:
-            "Checking license"
-        case .active:
-            "Unlimited"
-        case .inactive(let reason):
-            reason
-        case .misconfigured:
-            "Free"
-        }
     }
 }
 
@@ -54,8 +43,6 @@ final class LicenseManager: ObservableObject {
     private let defaults = UserDefaults.standard
 
     private static let snapshotKey = "polarLicenseSnapshot"
-    private static let offlineGrace: TimeInterval = 7 * 24 * 60 * 60
-
     init(
         client: PolarLicenseClient = PolarLicenseClient(),
         keychain: LicenseKeychain = LicenseKeychain()
@@ -66,7 +53,7 @@ final class LicenseManager: ObservableObject {
         // A cached snapshot only grants access alongside the key in the Keychain,
         // so an edited or forged UserDefaults snapshot can't unlock the app on its own.
         let hasStoredKey = keychain.licenseKey != nil
-        if client.isConfigured, hasStoredKey, let snapshot = Self.loadSnapshot(from: defaults), Self.snapshotIsFresh(snapshot) {
+        if client.isConfigured, hasStoredKey, let snapshot = Self.loadSnapshot(from: defaults) {
             state = snapshot.isUsable ? .active(snapshot) : .inactive(Self.inactiveReason(for: snapshot))
         } else if client.isConfigured, !hasStoredKey {
             state = .missing
@@ -92,7 +79,9 @@ final class LicenseManager: ObservableObject {
         }
 
         isWorking = true
-        state = .validating
+        if !state.isLicensed {
+            state = .validating
+        }
 
         Task {
             do {
@@ -214,12 +203,16 @@ final class LicenseManager: ObservableObject {
     }
 
     private func applyValidationFailure(_ error: Error) {
-        if let snapshot = currentSnapshot, snapshot.isUsable, Self.snapshotIsFresh(snapshot) {
+        if let snapshot = currentSnapshot, snapshot.isUsable, !error.isDefinitiveLicenseFailure {
             state = .active(snapshot)
             BPLog.log("Polar validation failed; using cached license: \(error.localizedDescription)")
             return
         }
 
+        if error.isDefinitiveLicenseFailure {
+            keychain.licenseKey = nil
+            defaults.removeObject(forKey: Self.snapshotKey)
+        }
         state = .inactive(error.userMessage)
         BPLog.log("Polar license check failed: \(error.localizedDescription)")
     }
@@ -240,10 +233,6 @@ final class LicenseManager: ObservableObject {
     private static func loadSnapshot(from defaults: UserDefaults) -> LicenseSnapshot? {
         guard let data = defaults.data(forKey: snapshotKey) else { return nil }
         return try? JSONDecoder.license.decode(LicenseSnapshot.self, from: data)
-    }
-
-    private static func snapshotIsFresh(_ snapshot: LicenseSnapshot) -> Bool {
-        Date().timeIntervalSince(snapshot.lastValidatedAt) < offlineGrace
     }
 
     private static func inactiveReason(for snapshot: LicenseSnapshot) -> String {
@@ -346,9 +335,12 @@ struct PolarLicenseClient {
         guard http.statusCode == expectedStatus else {
             if http.statusCode == 403 { throw PolarLicenseError.notPermitted }
             if let apiError = try? decoder.decode(PolarAPIError.self, from: data) {
-                throw PolarLicenseError.api(apiError.detail ?? apiError.error ?? "Polar returned \(http.statusCode)")
+                throw PolarLicenseError.server(
+                    status: http.statusCode,
+                    message: apiError.detail ?? apiError.error ?? "Polar returned \(http.statusCode)"
+                )
             }
-            throw PolarLicenseError.api("Polar returned \(http.statusCode)")
+            throw PolarLicenseError.server(status: http.statusCode, message: "Polar returned \(http.statusCode)")
         }
         if T.self == EmptyResponse.self {
             return EmptyResponse() as! T
@@ -400,7 +392,7 @@ struct PolarAPIError: Decodable {
 struct EmptyResponse: Decodable {}
 
 enum PolarLicenseError: LocalizedError {
-    case api(String)
+    case server(status: Int, message: String)
     case invalidResponse
     case notPermitted
 
@@ -410,7 +402,7 @@ enum PolarLicenseError: LocalizedError {
 
     var userMessage: String {
         switch self {
-        case .api(let message):
+        case .server(_, let message):
             message
         case .invalidResponse:
             "Invalid Polar response"
@@ -426,6 +418,18 @@ private extension Error {
             return polar.userMessage
         }
         return localizedDescription
+    }
+
+    var isDefinitiveLicenseFailure: Bool {
+        guard let error = self as? PolarLicenseError else { return false }
+        switch error {
+        case .notPermitted:
+            return true
+        case .server(let status, _):
+            return (400 ..< 500).contains(status) && status != 408 && status != 429
+        case .invalidResponse:
+            return false
+        }
     }
 }
 

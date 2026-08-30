@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Full-canvas layer. Rotation and offset are intentionally baked in. -->
+  <g transform="rotate(7 584 410)">
+    <rect x="382" y="226" width="384" height="312" rx="44" fill="#EFF3FF"/>
+    <rect x="430" y="266" width="72" height="30" rx="15" fill="#F2B84B"/>
+    <rect x="520" y="271" width="174" height="18" rx="9" fill="#7386D0"/>
+    <rect x="430" y="318" width="238" height="14" rx="7" fill="#B8C3E8"/>
+    <rect x="430" y="350" width="176" height="14" rx="7" fill="#CCD4EE"/>
+    <rect x="430" y="382" width="222" height="14" rx="7" fill="#B8C3E8"/>
+  </g>
+</svg>
