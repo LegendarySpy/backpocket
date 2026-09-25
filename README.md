@@ -1,128 +1,93 @@
 # Backpocket
 
-Your facts, one double-tap away.
+A tiny Mac menu bar app for the stuff you keep retyping.
 
-[Download the latest release](https://github.com/LegendarySpy/backpocket-updates/releases/latest/download/Backpocket.dmg) · [View all releases](https://github.com/LegendarySpy/backpocket-updates/releases) · [Report a bug](https://tally.so/r/D4G2Nb)
+Double-tap ⌥ Option in any text field and a little Liquid Glass palette pops up right at your cursor. Type a few letters, hit Return, and the value lands in the field you were already in. Email, address, phone number, IBAN, passport number, whatever.
 
-Backpocket is a tiny macOS menu bar utility. Double-tap ⌥ Option in any text field and a small Liquid Glass palette appears at your caret. Type a few letters to fuzzy-search your personal facts (email, IBAN, addresses, whatever you retype constantly), press Return, and the value lands in the field you were in.
+**[Download Backpocket](https://github.com/LegendarySpy/backpocket-updates/releases/latest/download/Backpocket.dmg)** · [All releases](https://github.com/LegendarySpy/backpocket-updates/releases) · [Report a bug](https://github.com/LegendarySpy/backpocket/issues)
 
-## Highlights
+Needs macOS 26 Tahoe or later.
 
-- Caret-anchored palette that opens above or below your text box, wherever there's room
-- Field-aware suggestions: the palette reads the focused field's label or placeholder, so your email fact is already selected in an email box
-- Fuzzy search across names and values (sensitive values stay unsearchable) with matched-letter highlighting; no match means Return types your query as-is
-- The selected result previews exactly what Return will type, with placeholders resolved and sensitive values masked (configurable: all results, selected only, or off)
-- Quick capture: select text in any app, right-click → Services → Save to Backpocket
-- Insertion by transient paste: the value is staged on the pasteboard marked transient and auto-generated (the conventions clipboard managers honour to skip recording), pasted, and your previous contents restored. Locked facts skip the pasteboard entirely and are typed as synthetic keystrokes
-- Locked facts are encrypted at rest with AES-GCM before they touch disk or iCloud; the key lives in the Keychain and rides iCloud Keychain to your other Macs
-- Dynamic placeholders in values and built-in palette results: `{date}`, `{shortdate}`, `{longdate}`, `{time}`, `{datetime}`, `{iso}`, `{timestamp}`, `{clipboard}`, `{username}`, `{fullname}`, `{hostname}`, `{app}`, `{uuid}`, or offset/formatted dates like `{date:+7:MMM d}`
-- iCloud sync for your saved facts across Macs signed into the same Apple Account
-- Free for up to 5 saved facts; a $5 one-time license unlocks unlimited facts
-- One permission: Accessibility (to find your caret and type for you)
-- Configurable trigger (double-tap ⌥ ⌃ ⌘ or ⇧), launch at login, native tabbed Settings
+## Why I made it
 
-## Building
+I got tired of retyping the same few things every day. Text expanders sort of do this, but you have to remember an abbreviation for everything, and your passport number ends up sitting in a plain text snippet. Password managers are built for logins, not for "what's my IBAN again." So I made the small thing in between.
 
-Open `Backpocket.xcodeproj` in Xcode 26+ and run, or:
+## What it does
 
-```sh
-./build.sh
-```
+- Opens at your caret, above or below the text box depending on where there's room. It also works in Chrome, Electron apps, and terminals, which took a lot of fiddling.
+- Reads the label on the field you're in, so in an email box your email is already selected
+- Fuzzy search over names and values. If nothing matches, Return just types what you wrote.
+- Shows a preview of exactly what Return will type
+- Locked facts get encrypted with AES-GCM before they're saved or synced. They're masked in the palette, need Touch ID to insert, and never touch the clipboard.
+- Placeholders like `{date}`, `{time}`, `{clipboard}`, `{uuid}`, `{app}`, or `{date:+7:MMM d}` for a week from today
+- Quick capture: select text anywhere, right-click, Services, Save to Backpocket
+- iCloud sync between your Macs, plus JSON export and import
+- You can pick the trigger key: Option, Control, Command, or Shift
 
-which builds Release and installs to /Applications.
+## How it inserts text
 
-Requires macOS 26 (Tahoe).
+Normal facts get pasted: Backpocket puts the value on the pasteboard, marks it transient so clipboard managers skip it, presses ⌘V, and then puts back whatever you had copied before. Pasting is one keystroke, so nothing gets dropped halfway through a long value.
 
-## Updates
+Locked facts never go on the pasteboard at all. Backpocket writes them straight into the field through Accessibility when it can confirm that worked, and otherwise types them out one key at a time using your actual keyboard layout.
 
-Backpocket uses Sparkle for app updates. The app checks:
+## Privacy
 
-```text
-https://legendaryspy.github.io/backpocket-updates/appcast.xml
-```
+The only permission is Accessibility. It needs that to find your cursor and type for you.
 
-Use a separate public `LegendarySpy/backpocket-updates` repository for update
-artifacts so this source repository can stay private. Configure GitHub Pages on
-that repository to publish from the `gh-pages` branch.
+There are no analytics, no ads, and no crash reporting. The app only goes online to check for updates (Sparkle), check your license if you have one (Polar), and sync through iCloud if you leave that on. Nothing gets sent to me. Your facts only go to your own iCloud, and locked ones are encrypted before they get there.
 
-Run the source repository's `Release` workflow to build, sign, notarize, and
-attach `Backpocket.dmg` to a draft release in `LegendarySpy/backpocket-updates`.
-Edit that draft release body as the changelog. Sparkle is not updated until the
-release is published. When a release is published, edited, deleted, or
-unpublished, the updates repository rebuilds `appcast.xml` from the latest
-published release.
+## Price
 
-The release workflow expects these source-repo secrets:
+The code is AGPL-3.0, so you can build it yourself and change whatever you want. If you share a modified version, it has to stay open source under the same license.
 
-- `MACOS_CERTIFICATE_BASE64`: Developer ID Application `.p12`, base64 encoded
-- `MACOS_CERTIFICATE_PASSWORD`: password for the `.p12`
-- `MACOS_PROVISIONING_PROFILE_BASE64`: Developer ID provisioning profile for `com.backpocket.mac` with iCloud enabled, base64 encoded
-- `KEYCHAIN_PASSWORD`: temporary CI keychain password
-- `APPLE_ID`: Apple ID used for notarization
-- `APPLE_APP_SPECIFIC_PASSWORD`: app-specific password for notarization
-- `APPLE_TEAM_ID`: Apple developer team ID
-- `UPDATES_REPO_TOKEN`: token that can write to `LegendarySpy/backpocket-updates`
+The signed builds on the releases page let you save 5 facts for free. $5 once unlocks unlimited facts on up to three Macs. That's what pays for the Apple developer account and notarization, so if you end up using it every day, grabbing a license would be awesome.
 
-The public updates repository expects this repository secret:
+## Building it yourself
 
-- `SPARKLE_PRIVATE_KEY`: exported Sparkle private key
-
-Export the Sparkle private key for the GitHub secret with:
+You need Xcode 26 or later. Xcode 26 doesn't include the Metal toolchain by default, and the About tab uses a small shader, so grab that first:
 
 ```sh
-.build/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_keys -x sparkle_private_key.txt
+xcodebuild -downloadComponent MetalToolchain
 ```
 
-Do not commit the exported private key.
+The project is set up to sign with my team and a Developer ID profile, so it won't sign on your machine as-is. In Xcode, go to the Backpocket target, then Signing & Capabilities:
 
-## Icons
+1. Turn on "Automatically manage signing" and pick your own team
+2. Change the bundle identifier to something of your own
+3. Keep the iCloud key-value store and keychain group entitlements if you want sync and locked facts to work. If you just want to poke around, you can remove them.
 
-`Icon/icon.icon` is the app icon and is compiled directly by Xcode. The approved
-SVG layers are also kept in `Icon/AppIcon-Layers`. `Icon/tray.png` is the
-separate menu-bar source. Rebuild its template image set with ImageMagick:
+Then hit ⌘R. `./build.sh` builds Release and installs it to /Applications, but it uses the project's signing settings, so it's really for me.
+
+Once it's running, grant Accessibility access when it asks. If you rebuild with a different signature later, macOS might need you to toggle Backpocket off and back on in System Settings, Privacy & Security, Accessibility.
+
+To debug where the palette opens, stream the geometry log:
 
 ```sh
-./scripts/build_icons.sh
+log stream --predicate 'subsystem == "com.backpocket.mac"'
 ```
 
-## Licensing
+It logs anchor rects and which fallback got used. It never logs fact values.
 
-Backpocket can validate Polar license keys using Polar's public Customer Portal
-license-key endpoints. These build settings configure that:
+## Where things are
 
-- `BACKPOCKET_POLAR_ORGANIZATION_ID`: Polar organization UUID
-- `BACKPOCKET_POLAR_LICENSE_BENEFIT_ID`: Backpocket license-key benefit UUID
-- `BACKPOCKET_POLAR_CHECKOUT_URL`: public Polar checkout or product URL
-- `BACKPOCKET_POLAR_PORTAL_URL`: hosted Polar customer portal URL
-- `BACKPOCKET_POLAR_API_BASE_URL`: defaults to `https://api.polar.sh/v1`
+| File | What it does |
+| --- | --- |
+| `DoubleTap.swift` | Watches for the double-tap on the modifier key |
+| `CaretLocator.swift` | Finds the caret through Accessibility, with fallbacks for Chromium and terminals |
+| `PaletteController.swift`, `PaletteView.swift` | The palette panel, where it goes, and inserting the value |
+| `Fuzzy.swift` | Search and ranking (match quality, recency, per-app use, field label) |
+| `Typer.swift`, `Pasteboard.swift` | Synthetic typing and the transient paste |
+| `Vault.swift`, `Auth.swift` | Encryption for locked facts and the Touch ID gate |
+| `Models.swift` | Facts, saving to disk, and iCloud sync |
+| `Placeholders.swift` | `{date}` and friends |
+| `LicenseManager.swift` | Polar license checks and the free fact limit |
 
-Current Polar setup:
+## Contributing
 
-- Organization: `98d75121-191c-4136-aa56-2c7803173973` (`g-squared`)
-- Product: `250c1267-b46c-4a14-affa-0822d0f85ebf` (`Backpocket`)
-- License benefit: `8c725bcf-1e7f-402b-90c8-19440b7654d2` (`BackPocket`)
-- Price: `$5` one-time
-- Checkout: `https://buy.polar.sh/polar_cl_36BZ6cLy0UzrhGLAGQoXSNhKR9XKJE6DUFHFs0Ww7PE`
-- Portal: `https://polar.sh/g-squared/portal`
+Issues and PRs are welcome. If it's a big change, open an issue first so we can talk about it before you put the time in. For bugs where the palette shows up in the wrong place, tell me the app and the kind of text field, and a snippet of the geometry log helps a lot.
 
-The Polar `license_keys` benefit has prefix `BP`, no expiry, and `3` active
-devices with customer admin enabled so customers can free old devices.
+Release and signing notes are in [RELEASING.md](RELEASING.md).
 
-Backpocket runs free with up to 5 saved facts. A valid license unlocks unlimited
-saved facts. Extra facts are preserved locally if a license is removed, but only
-the first 5 are available in the palette until the license is restored.
+## License
 
-License keys are stored in Keychain. The app stores only activation/cache
-metadata in `UserDefaults` and revalidates with Polar when the cached check is
-more than 24 hours old. A previously validated lifetime license remains usable
-through network or Polar outages; an explicit revoked, disabled, expired, or
-invalid response removes access.
-
-## Privacy and terms
-
-Backpocket has no product analytics, advertising, or automatic crash reporting.
-The app includes its [Privacy Policy](https://legendaryspy.github.io/backpocket-updates/privacy.html)
-and [Terms of Use](https://legendaryspy.github.io/backpocket-updates/terms.html)
-in the About page, where they remain available offline. The Release workflow
-publishes those same bundled documents to the public updates repository for
-checkout and pre-install access.
+[AGPL-3.0](LICENSE). Sparkle has its own license, which is bundled in the app.

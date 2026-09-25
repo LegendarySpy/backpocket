@@ -258,8 +258,7 @@ private struct FactsTab: View {
     }
 }
 
-/// Saving failing quietly is the one failure that costs work, so it gets a
-/// permanent strip rather than a notification that can be missed.
+/// Stays on screen until the problem clears, so a failed save can't be missed.
 private struct FailureBanner: View {
     let message: String
     var onDismiss: (() -> Void)?
@@ -337,7 +336,7 @@ private struct PlaceholderHelpView: View {
             token,
             context: PlaceholderResolver.Context(appName: NSRunningApplication.current.localizedName)
         )
-        if value.isEmpty { return "—" }
+        if value.isEmpty { return "(empty)" }
         let line = value.components(separatedBy: .newlines).joined(separator: " ")
         return line.count > 30 ? line.prefix(29) + "…" : line
     }
@@ -557,9 +556,8 @@ private struct GeneralTab: View {
                 Button("Open System Settings…") { permissions.openSystemSettings() }
             } label: {
                 Text("Accessibility access")
-                Text("Needed to find your cursor and type for you. The palette turns on the moment you grant it — no restart.")
+                Text("Needed to find your cursor and type for you. The palette turns on as soon as you grant it, no restart needed.")
             }
-
         }
     }
 }

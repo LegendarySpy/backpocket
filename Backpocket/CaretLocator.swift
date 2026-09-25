@@ -55,33 +55,11 @@ enum CaretLocator {
     private static func fallbackAnchor(pid: pid_t?) -> PaletteAnchor {
         if let element = focusedElement(pid: pid) {
             if let grid = gridAnchor(of: element, pid: pid) { return grid }
-            if let frame = elementFrame(of: element).map(convert), isOnScreen(frame) {
-                BPLog.log("fallback=elementFrame \(frame)")
-                // A huge focused element (web area, terminal, canvas) says
-                // nothing about where in itself the user is looking, so it gets
-                // the same treatment as the window: hug its bottom-left corner.
-                if frame.height <= 200 {
-                    return PaletteAnchor(rect: frame, alignmentX: frame.minX, fromCaret: false)
-                }
-                return bottomLeftAnchor(of: frame)
-            }
         }
-        return bottomLeftAnchor(of:
-            focusedWindowFrame(pid: pid)
-                ?? NSScreen.main?.visibleFrame
-                ?? NSScreen.screens[0].visibleFrame
-        )
-    }
-
-    /// Last resort, and never the pointer: a palette that lands wherever the
-    /// mouse happens to rest reads as a bug, and moves between two otherwise
-    /// identical triggers. A corner of the thing being typed into is at least
-    /// the same place every time.
-    private static func bottomLeftAnchor(of frame: NSRect) -> PaletteAnchor {
-        let inset: CGFloat = 26
-        let rect = NSRect(x: frame.minX + inset, y: frame.minY + inset, width: 2, height: 18)
-        BPLog.log("fallback=bottom-left of \(frame) -> \(rect)")
-        return PaletteAnchor(rect: rect, alignmentX: rect.minX, fromCaret: false)
+        let cursor = NSEvent.mouseLocation
+        let rect = NSRect(x: cursor.x, y: cursor.y, width: 2, height: 18)
+        BPLog.log("fallback=cursor \(cursor)")
+        return PaletteAnchor(rect: rect, alignmentX: cursor.x, fromCaret: false)
     }
 
     // MARK: - Terminals
@@ -156,10 +134,9 @@ enum CaretLocator {
         let cell = measured.height > 0 ? measured.height : 17
 
         // Same for width: trust it only when the longest line spans the grid,
-        // which a monospace width-to-height ratio confirms. The widest line ever
-        // seen from this process is kept, because a shell prompt on its own never
-        // spans the grid — but anything it has printed once may have, and that
-        // measurement stays true for as long as the window keeps its size.
+        // which a monospace width-to-height ratio confirms. A bare shell prompt
+        // never spans the grid, but earlier output might have, so the widest line
+        // seen from this process is kept until the window changes size.
         var columns = lines.lazy.map(\.count).max() ?? 0
         if let pid {
             if let seen = observedColumns[pid], seen.frameWidth == frame.width {
@@ -202,15 +179,6 @@ enum CaretLocator {
             return nil
         }
         return ref as? String
-    }
-
-    private static func focusedWindowFrame(pid: pid_t?) -> NSRect? {
-        guard let pid else { return nil }
-        var ref: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(
-            appElement(pid), kAXFocusedWindowAttribute as CFString, &ref
-        ) == .success, let raw = ref, CFGetTypeID(raw) == AXUIElementGetTypeID() else { return nil }
-        return elementFrame(of: raw as! AXUIElement).map(convert)
     }
 
     private static func appElement(_ pid: pid_t) -> AXUIElement {

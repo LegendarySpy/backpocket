@@ -49,5 +49,4 @@ final class Permissions: ObservableObject {
             URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
         )
     }
-
 }

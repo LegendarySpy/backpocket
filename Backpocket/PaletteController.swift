@@ -54,10 +54,6 @@ final class PaletteModel: ObservableObject {
         reset()
     }
 
-    func prepareForDismiss() {
-        reset()
-    }
-
     func resolvedValue(for fact: Fact) -> String {
         PlaceholderResolver.resolve(fact.value, context: placeholderContext)
     }
@@ -313,7 +309,7 @@ final class PaletteController: NSObject, NSWindowDelegate {
         showGeneration += 1
         resolution = nil
         panel.orderOut(nil)
-        model.prepareForDismiss()
+        model.reset()
         if reactivate { targetApp?.activate() }
     }
 
@@ -342,9 +338,9 @@ final class PaletteController: NSObject, NSWindowDelegate {
     /// Pasting is one keystroke instead of one per character, so nothing can be
     /// dropped or reordered mid-value.
     ///
-    /// A sensitive value never transits the pasteboard, however briefly. It goes
-    /// in through accessibility where that provably works — instant, and it never
-    /// leaves the field — and is typed out character by character everywhere else.
+    /// A sensitive value never touches the pasteboard. It's written through
+    /// accessibility when the write can be verified, and typed out character by
+    /// character everywhere else.
     private func deliverSoon(_ value: String, sensitive: Bool, pid: pid_t?) {
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(80))

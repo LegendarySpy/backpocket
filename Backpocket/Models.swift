@@ -99,7 +99,7 @@ struct FactUsage: Codable, Equatable {
     var lastUsed: Date
 }
 
-/// One stable per-install ID, shared by iCloud sync payloads and license activation metadata.
+/// Stable per-install ID, used in iCloud sync payloads and license activations.
 enum DeviceIdentifier {
     private static let key = "deviceID"
 
@@ -123,9 +123,8 @@ final class FactStore: ObservableObject {
     @Published private(set) var iCloudSyncEnabled: Bool
     @Published private(set) var iCloudStatus = "Syncing with iCloud"
 
-    /// Set when a save was refused rather than written. Nothing is lost yet — the
-    /// last good file is still on disk — but edits are no longer persisting, and
-    /// staying quiet about that is how someone loses a day of work.
+    /// Set when a save was refused. The last good file is still on disk, but new
+    /// edits aren't being saved, so the Facts tab shows a banner until it clears.
     @Published private(set) var saveFailure: String?
 
     private let fileURL: URL

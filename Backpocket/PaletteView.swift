@@ -31,7 +31,7 @@ struct PaletteView: View {
     }
 
     /// Rows are held back until the panel is visible so their blur-replace
-    /// entrance plays on screen, like the results population used to.
+    /// entrance actually plays on screen.
     @ViewBuilder
     private var rowPills: some View {
         if !model.introducing {

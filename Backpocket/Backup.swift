@@ -1,9 +1,9 @@
 import AppKit
 import UniformTypeIdentifiers
 
-/// Plain JSON backup. An export is the one place a locked value leaves the app
-/// in the clear, so it asks for Touch ID first and says so on the panel — a
-/// backup you can't read on a Mac that lost its key is not a backup.
+/// Plain JSON backup. Locked values are exported in the clear, because a backup
+/// you can't read on a Mac that lost its key isn't a backup. That's why export
+/// asks for Touch ID first and says so on the save panel.
 @MainActor
 enum Backup {
     private static let formatVersion = 1

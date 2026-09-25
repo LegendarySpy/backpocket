@@ -104,7 +104,7 @@ private enum Page: CaseIterable {
     func body(trigger: TriggerModifier) -> String {
         switch self {
         case .accessibility:
-            "Backpocket needs Accessibility access to see where your cursor is and type for you. It starts working the moment you allow it — no restart."
+            "Backpocket needs Accessibility access to see where your cursor is and type for you. It starts working as soon as you allow it, no restart needed."
         case .trigger:
             "Double-tap \(trigger.label) in any text field, type a few letters, and press Return. The value lands where your cursor was."
         case .locking:
@@ -143,7 +143,6 @@ private struct AccessibilityStep: View {
 /// The chosen modifier, tapped twice.
 private struct TriggerStep: View {
     let trigger: TriggerModifier
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 10) {

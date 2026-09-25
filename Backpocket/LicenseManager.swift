@@ -72,9 +72,9 @@ final class LicenseManager: ObservableObject {
             return
         }
         guard let key = keychain.licenseKey else {
-            // Being licensed requires the key in the Keychain. If it's genuinely
-            // gone the user is unlicensed — but never wipe the cached snapshot on a
-            // mere read failure; only an explicit "Remove" clears stored data.
+            // No key in the Keychain means unlicensed. Don't wipe the cached
+            // snapshot here though, since this could just be a failed read. Only
+            // an explicit "Remove" clears stored data.
             state = currentSnapshot == nil ? .missing : .inactive("License key not found on this Mac")
             return
         }

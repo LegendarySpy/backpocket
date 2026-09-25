@@ -10,7 +10,7 @@ import Security
 /// Every sealed value names the key that sealed it, and keys are never deleted or
 /// overwritten. Two Macs that each mint a key before the other's has synced end up
 /// with two keys rather than one clobbering the other, so no ciphertext is ever
-/// orphaned — the value simply stays unreadable until its key arrives.
+/// orphaned. The value just stays unreadable until its key arrives.
 enum Vault {
     /// `bp1:<key id>:<base64 ciphertext>`. Base64 contains no colon, so the
     /// split is unambiguous.
@@ -20,7 +20,7 @@ enum Vault {
         stored.hasPrefix(prefix)
     }
 
-    /// Ciphertext for `plaintext`, or nil when no key could be obtained — the
+    /// Ciphertext for `plaintext`, or nil when no key could be obtained. The
     /// caller must then refuse to store the value rather than write it in the clear.
     static func seal(_ plaintext: String) -> String? {
         guard let (id, key) = currentKey(),
