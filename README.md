@@ -4,7 +4,7 @@ A tiny Mac menu bar app for the stuff you keep retyping.
 
 Double-tap ⌥ Option in any text field and a little Liquid Glass palette pops up right at your cursor. Type a few letters, hit Return, and the value lands in the field you were already in. Email, address, phone number, IBAN, passport number, whatever.
 
-**[Download Backpocket](https://github.com/LegendarySpy/backpocket-updates/releases/latest/download/Backpocket.dmg)** · [All releases](https://github.com/LegendarySpy/backpocket-updates/releases) · [Report a bug](https://github.com/LegendarySpy/backpocket/issues)
+**[Download Backpocket](https://github.com/LegendarySpy/backpocket/releases/latest/download/Backpocket.dmg)** · [Changelog](CHANGELOG.md) · [Report a bug](https://github.com/LegendarySpy/backpocket/issues)
 
 Needs macOS 26 Tahoe or later.
 

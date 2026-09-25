@@ -1,0 +1,127 @@
+name: Update Site
+
+# Publishes https://legendaryspy.github.io/backpocket/: the Sparkle appcast for
+# the latest release, plus the privacy, terms, and Sparkle license pages.
+# Release runs this after publishing. Run it by hand after editing a release.
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["Backpocket/Legal/**"]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: site
+  cancel-in-progress: false
+
+env:
+  APP_NAME: Backpocket
+  SPARKLE_VERSION: 2.9.4
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Install Sparkle tools
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release download "$SPARKLE_VERSION" \
+            --repo sparkle-project/Sparkle \
+            --pattern "Sparkle-${SPARKLE_VERSION}.tar.xz" \
+            --dir "$RUNNER_TEMP"
+          mkdir -p "$RUNNER_TEMP/sparkle"
+          tar -xJf "$RUNNER_TEMP/Sparkle-${SPARKLE_VERSION}.tar.xz" -C "$RUNNER_TEMP/sparkle"
+
+      - name: Build appcast from the latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          WORK_DIR="$RUNNER_TEMP/appcast"
+          mkdir -p "$WORK_DIR" _site
+
+          TAG="$(gh release view --json tagName --jq .tagName)"
+          VERSION="${TAG#v}"
+          gh release download "$TAG" --pattern "${APP_NAME}.dmg" --dir "$WORK_DIR"
+          python3 scripts/changelog.py notes "$VERSION" > "$WORK_DIR/${APP_NAME}.md"
+
+          printf "%s" "$SPARKLE_PRIVATE_KEY" | "$RUNNER_TEMP/sparkle/bin/generate_appcast" \
+            --ed-key-file - \
+            --download-url-prefix "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/" \
+            --embed-release-notes \
+            "$WORK_DIR"
+          cp "$WORK_DIR/appcast.xml" _site/appcast.xml
+
+      - name: Add legal pages
+        run: |
+          set -euo pipefail
+          cp Backpocket/Legal/privacy.html Backpocket/Legal/terms.html Backpocket/Legal/sparkle-license.html _site/
+          cat > _site/index.html <<'HTML'
+          <!doctype html>
+          <meta charset="utf-8">
+          <meta http-equiv="refresh" content="0; url=https://github.com/LegendarySpy/backpocket">
+          <title>Backpocket</title>
+          <a href="https://github.com/LegendarySpy/backpocket">Backpocket on GitHub</a>
+          HTML
+
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+  # Builds up to 1.0.3 check the old feed in LegendarySpy/backpocket-updates.
+  # Mirroring the appcast there moves them onto this repo's feed with their next
+  # update. Delete this job, the UPDATES_REPO_TOKEN secret, and the old repo once
+  # nobody is left on 1.0.3.
+  legacy-feed:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: github-pages
+          path: ${{ runner.temp }}/pages
+
+      - name: Mirror appcast to the old feed
+        env:
+          GH_TOKEN: ${{ secrets.UPDATES_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$GH_TOKEN" ]; then
+            echo "No UPDATES_REPO_TOKEN, skipping the old feed."
+            exit 0
+          fi
+          tar -xf "$RUNNER_TEMP/pages/artifact.tar" -C "$RUNNER_TEMP/pages"
+          gh repo clone LegendarySpy/backpocket-updates "$RUNNER_TEMP/legacy" -- --depth 1 --branch gh-pages
+          cp "$RUNNER_TEMP/pages/appcast.xml" "$RUNNER_TEMP/legacy/appcast.xml"
+          cd "$RUNNER_TEMP/legacy"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add appcast.xml
+          if git diff --cached --quiet; then
+            echo "Old feed is already up to date."
+          else
+            git commit -m "Mirror appcast from LegendarySpy/backpocket"
+            git push
+          fi

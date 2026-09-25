@@ -61,7 +61,7 @@
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUFeedURL</key>
-	<string>https://legendaryspy.github.io/backpocket-updates/appcast.xml</string>
+	<string>https://legendaryspy.github.io/backpocket/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>/pYt/H+pmQ+wKZPtiqWp0IHStS0TayndOui9EEuI1d8=</string>
 </dict>
