@@ -98,7 +98,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v6
         with:
           name: github-pages
           path: ${{ runner.temp }}/pages
@@ -113,6 +113,7 @@ jobs:
             exit 0
           fi
           tar -xf "$RUNNER_TEMP/pages/artifact.tar" -C "$RUNNER_TEMP/pages"
+          gh auth setup-git
           gh repo clone LegendarySpy/backpocket-updates "$RUNNER_TEMP/legacy" -- --depth 1 --branch gh-pages
           cp "$RUNNER_TEMP/pages/appcast.xml" "$RUNNER_TEMP/legacy/appcast.xml"
           cd "$RUNNER_TEMP/legacy"
