@@ -336,7 +336,9 @@ final class PaletteController: NSObject, NSWindowDelegate {
     }
 
     /// Pasting is one keystroke instead of one per character, so nothing can be
-    /// dropped or reordered mid-value.
+    /// dropped or reordered mid-value. If nothing reads the pasteboard, the ⌘V
+    /// never landed (the app ignored it, or the layout sent something else),
+    /// and typing it out can't insert the value twice.
     ///
     /// A sensitive value never touches the pasteboard. It's written through
     /// accessibility when the write can be verified, and typed out character by
@@ -347,8 +349,12 @@ final class PaletteController: NSObject, NSWindowDelegate {
             if sensitive {
                 if await CaretLocator.insertText(value, pid: pid) { return }
                 Typer.type(value)
-            } else if Pasteboard.stage(value) {
+            } else if let paste = Pasteboard.stage(value) {
                 Typer.pressCommandV()
+                if await !paste.waitForRead() {
+                    BPLog.log("insert: nothing read the pasteboard; typing instead")
+                    Typer.type(value)
+                }
             } else {
                 Typer.type(value)
             }
